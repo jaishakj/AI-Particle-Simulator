@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Particle Simulator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #050608;
+    --panel: #0a0c10;
+    --border: #1a1f2e;
+    --accent: #00ff88;
+    --accent2: #0088ff;
+    --accent3: #ff4466;
+    --text: #e0e8f0;
+    --muted: #4a5568;
+    --panel-w: 260px;
+  }
+
+  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; }
+
+  /* Layout */
+  #app { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  #sidebar {
+    width: var(--panel-w);
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    flex-shrink: 0;
+    z-index: 10;
+  }
+
+  #sidebar-header {
+    padding: 18px 16px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  #sidebar-header h1 {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 13px;
+    letter-spacing: 0.15em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+
+  #sidebar-header p {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 3px;
+    letter-spacing: 0.08em;
+  }
+
+  #sim-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 0;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  .sim-category {
+    padding: 6px 14px 4px;
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+
+  .sim-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-left: 2px solid transparent;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #8899aa;
+  }
+
+  .sim-item:hover { background: rgba(0,255,136,0.04); color: var(--text); }
+  .sim-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(0,255,136,0.06); }
+
+  .sim-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+
+  /* AI Section */
+  #ai-section {
+    border-top: 1px solid var(--border);
+    padding: 14px;
+  }
+
+  #ai-section label {
+    display: block;
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  #ai-input {
+    width: 100%;
+    background: rgba(0,255,136,0.04);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    resize: none;
+    height: 52px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #ai-input:focus { border-color: rgba(0,255,136,0.3); }
+  #ai-input::placeholder { color: var(--muted); }
+
+  #ai-btn {
+    margin-top: 8px;
+    width: 100%;
+    padding: 8px;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Space Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: background 0.2s;
+  }
+  #ai-btn:hover { background: rgba(0,255,136,0.1); }
+
+  /* Canvas area */
+  #main {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* HUD */
+  #hud-title {
+    position: absolute;
+    top: 20px;
+    left: 24px;
+    pointer-events: none;
+  }
+
+  #hud-title h2 {
+    font-family: 'Syne', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  #hud-title p {
+    font-size: 9px;
+    color: var(--muted);
+    margin-top: 3px;
+    max-width: 360px;
+    line-height: 1.5;
+  }
+
+  /* Controls panel */
+  #controls {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    background: rgba(10,12,16,0.85);
+    backdrop-filter: blur(12px);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px;
+    width: 220px;
+  }
+
+  #controls h3 {
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 14px;
+  }
+
+  .ctrl-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+  }
+
+  .ctrl-label {
+    font-size: 9px;
+    color: #8899aa;
+    letter-spacing: 0.05em;
+  }
+
+  .ctrl-val {
+    font-size: 9px;
+    color: var(--accent);
+    min-width: 32px;
+    text-align: right;
+  }
+
+  .ctrl-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    height: 2px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+
+  .ctrl-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(0,255,136,0.5);
+  }
+
+  /* Labels on canvas */
+  .canvas-label {
+    position: absolute;
+    font-size: 8px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding: 3px 8px;
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 2px;
+    background: rgba(0,255,136,0.06);
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* FPS */
+  #fps {
+    position: absolute;
+    bottom: 14px;
+    right: 16px;
+    font-size: 8px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+  }
+
+  /* Orbit hint */
+  #orbit-hint {
+    position: absolute;
+    bottom: 14px;
+    left: 24px;
+    font-size: 8px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- Sidebar -->
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <h1>Particle Simulator</h1>
+      <p>// interactive field engine</p>
+    </div>
+
+    <div id="sim-list">
+      <div class="sim-category">Physics &amp; Waves</div>
+      <div class="sim-item" data-sim="trig">   <span class="sim-dot"></span> Sin/Cos/Tan Waves</div>
+      <div class="sim-item" data-sim="fourier"><span class="sim-dot"></span> Fourier Transform</div>
+      <div class="sim-item" data-sim="vortex"> <span class="sim-dot"></span> Vortex</div>
+      <div class="sim-item" data-sim="physics"><span class="sim-dot"></span> Physics</div>
+
+      <div class="sim-category">Science &amp; Engineering</div>
+      <div class="sim-item" data-sim="motor">  <span class="sim-dot"></span> Electric Motor</div>
+      <div class="sim-item" data-sim="arc">    <span class="sim-dot"></span> Arc Reactor</div>
+      <div class="sim-item" data-sim="dna">    <span class="sim-dot"></span> DNA Tesseract Wire</div>
+      <div class="sim-item" data-sim="em">     <span class="sim-dot"></span> Electromagnetic Induction</div>
+
+      <div class="sim-category">Art &amp; Culture</div>
+      <div class="sim-item" data-sim="odyssey"><span class="sim-dot"></span> Odyssey</div>
+      <div class="sim-item" data-sim="bulb">   <span class="sim-dot"></span> Bulb</div>
+      <div class="sim-item" data-sim="blackhole"><span class="sim-dot"></span> Black Hole</div>
+      <div class="sim-item" data-sim="star">   <span class="sim-dot"></span> Creation of Star</div>
+      <div class="sim-item" data-sim="string"> <span class="sim-dot"></span> String Theory</div>
+      <div class="sim-item" data-sim="singular"><span class="sim-dot"></span> Singularity</div>
+      <div class="sim-item" data-sim="butterfly"><span class="sim-dot"></span> Butterfly</div>
+      <div class="sim-item" data-sim="fire">   <span class="sim-dot"></span> Fire</div>
+      <div class="sim-item" data-sim="dna2">   <span class="sim-dot"></span> DNA Double Helix</div>
+      <div class="sim-item" data-sim="atom">   <span class="sim-dot"></span> Atom Rings</div>
+      <div class="sim-item" data-sim="lunar">  <span class="sim-dot"></span> Lunar Eclipse</div>
+      <div class="sim-item" data-sim="solar">  <span class="sim-dot"></span> Solar System</div>
+    </div>
+
+    <div id="ai-section">
+      <label>// AI Generate (Beta)</label>
+      <textarea id="ai-input" placeholder="Describe a particle scene...&#10;e.g. 'Supernova explosion'"></textarea>
+      <button id="ai-btn">⚡ Generate Shape</button>
+    </div>
+  </div>
+
+  <!-- Canvas -->
+  <div id="main">
+    <canvas id="c"></canvas>
+    <div id="hud-title">
+      <h2 id="sim-name">Select a Simulation</h2>
+      <p id="sim-desc">Choose any simulation from the left panel.</p>
+    </div>
+    <div id="controls">
+      <h3>Simulation Controls</h3>
+      <div id="ctrl-slots"></div>
+    </div>
+    <div id="fps">-- fps</div>
+    <div id="orbit-hint">drag to orbit · scroll to zoom</div>
+  </div>
+
+</div>
+
+<script>
+// ─── Canvas setup ──────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  canvas.width = canvas.offsetWidth * devicePixelRatio;
+  canvas.height = canvas.offsetHeight * devicePixelRatio;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Orbit / zoom ──────────────────────────────────────────────────
+let rotX = 0.3, rotY = 0.4, zoom = 1;
+let dragging = false, lx = 0, ly = 0;
+
+canvas.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+window.addEventListener('mouseup', () => dragging = false);
+window.addEventListener('mousemove', e => {
+  if (!dragging) return;
+  rotY += (e.clientX - lx) * 0.005;
+  rotX += (e.clientY - ly) * 0.005;
+  lx = e.clientX; ly = e.clientY;
+});
+canvas.addEventListener('wheel', e => { zoom *= e.deltaY > 0 ? 0.93 : 1.07; zoom = Math.min(Math.max(zoom, 0.3), 4); });
+
+// ─── 3D projection ─────────────────────────────────────────────────
+function project(x, y, z) {
+  const cx = Math.cos(rotX), sx = Math.sin(rotX);
+  const cy = Math.cos(rotY), sy = Math.sin(rotY);
+  const y1 = y * cx - z * sx, z1 = y * sx + z * cx;
+  const x2 = x * cy + z1 * sy, z2 = -x * sy + z1 * cy;
+  const fov = 600 * zoom;
+  const w = canvas.width, h = canvas.height;
+  const s = fov / (fov + z2 + 400);
+  return { sx: x2 * s + w / 2, sy: y1 * s + h / 2, z: z2, s };
+}
+
+// ─── Simulation registry ───────────────────────────────────────────
+const sims = {};
+let current = null;
+let t = 0;
+let params = {};
+
+function registerSim(id, def) { sims[id] = def; }
+
+// ─── Controls builder ──────────────────────────────────────────────
+function buildControls(def) {
+  const slot = document.getElementById('ctrl-slots');
+  slot.innerHTML = '';
+  params = {};
+  if (!def.controls) return;
+  def.controls.forEach(c => {
+    params[c.id] = c.default;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="ctrl-row">
+        <span class="ctrl-label">${c.label}</span>
+        <span class="ctrl-val" id="v-${c.id}">${c.default}</span>
+      </div>
+      <input type="range" class="ctrl-slider" min="${c.min}" max="${c.max}" step="${c.step||1}" value="${c.default}" data-id="${c.id}">
+    `;
+    slot.appendChild(wrap);
+    wrap.querySelector('input').addEventListener('input', ev => {
+      params[c.id] = parseFloat(ev.target.value);
+      document.getElementById('v-' + c.id).textContent = params[c.id];
+    });
+  });
+}
+
+function switchSim(id) {
+  const def = sims[id];
+  if (!def) return;
+  current = def;
+  t = 0;
+  document.getElementById('sim-name').textContent = def.name;
+  document.getElementById('sim-desc').textContent = def.desc;
+  buildControls(def);
+  document.querySelectorAll('.sim-item').forEach(el => el.classList.toggle('active', el.dataset.sim === id));
+}
+
+document.querySelectorAll('.sim-item').forEach(el => el.addEventListener('click', () => switchSim(el.dataset.sim)));
+
+// ─── Helpers ───────────────────────────────────────────────────────
+function hsl(h, s, l, a=1) { return `hsla(${h},${s}%,${l}%,${a})`; }
+function dot(x, y, z, r, col) {
+  const p = project(x, y, z);
+  const rs = r * p.s;
+  if (rs < 0.3) return;
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, rs, 0, Math.PI*2);
+  ctx.fillStyle = col;
+  ctx.fill();
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// SIMULATIONS
+// ═══════════════════════════════════════════════════════════════════
+
+// 1. TRIG WAVES ─────────────────────────────────────────────────────
+registerSim('trig', {
+  name: 'Sin / Cos / Tan Waves', desc: 'Three trig functions rendered as 3D particle ribbons.',
+  controls: [
+    { id: 'freq', label: 'Frequency', min: 0.5, max: 5, step: 0.1, default: 1.5 },
+    { id: 'amp',  label: 'Amplitude', min: 20, max: 150, step: 1, default: 80 },
+    { id: 'tspd', label: 'Time Speed', min: 0, max: 3, step: 0.1, default: 1 },
+  ],
+  draw() {
+    const N = 200, W = 300;
+    for (let i = 0; i < N; i++) {
+      const u = (i / N - 0.5) * W * 2;
+      const phase = u * 0.05 * params.freq + t * params.tspd;
+      // Sine
+      dot(u, Math.sin(phase) * params.amp, -80, 2.5, hsl(160, 100, 60, 0.9));
+      // Cosine
+      dot(u, Math.cos(phase) * params.amp, 0, 2.5, hsl(210, 100, 65, 0.9));
+      // Tan (clamped)
+      const tv = Math.tan(phase) * params.amp * 0.3;
+      if (Math.abs(tv) < params.amp * 1.5)
+        dot(u, tv, 80, 2.5, hsl(45, 100, 65, 0.9));
+    }
+  }
+});
+
+// 2. FOURIER ────────────────────────────────────────────────────────
+registerSim('fourier', {
+  name: 'Fourier Series Decomposition', desc: 'Square wave built from nested rotating phasors.',
+  controls: [
+    { id: 'harmonics', label: 'Harmonics', min: 1, max: 15, step: 1, default: 5 },
+    { id: 'radius', label: 'Radius', min: 30, max: 120, step: 1, default: 70 },
+    { id: 'fspd', label: 'Speed', min: 0.1, max: 3, step: 0.1, default: 0.8 },
+  ],
+  trail: [],
+  draw() {
+    const H = Math.floor(params.harmonics);
+    const R = params.radius;
+    let x = -200, y = 0;
+    for (let k = 0; k < H; k++) {
+      const n = 2 * k + 1;
+      const r = R * (4 / (Math.PI * n));
+      const angle = n * t * params.fspd;
+      const nx = x + Math.cos(angle) * r;
+      const ny = y + Math.sin(angle) * r;
+      // Draw arm
+      for (let j = 0; j <= 12; j++) {
+        const f = j / 12;
+        dot(x + (nx - x) * f, y + (ny - y) * f, 0, 1, hsl(160 + k * 15, 80, 60, 0.5));
+      }
+      // Circle outline
+      for (let a = 0; a < 60; a++) {
+        const ca = (a / 60) * Math.PI * 2;
+        dot(x + Math.cos(ca) * r, y + Math.sin(ca) * r, 0, 0.8, hsl(160, 50, 50, 0.2));
+      }
+      x = nx; y = ny;
+    }
+    // Tip dot
+    dot(x, y, 0, 4, hsl(45, 100, 70, 1));
+    // Trail (time domain)
+    this.trail.push({ x, y });
+    if (this.trail.length > 300) this.trail.shift();
+    for (let i = 0; i < this.trail.length; i++) {
+      const pt = this.trail[i];
+      const tx = 50 + i * 1.2;
+      dot(tx, pt.y, 0, 1.5, hsl(45, 100, 65, i / this.trail.length));
+    }
+    // Connecting line
+    if (this.trail.length > 0) {
+      const latest = this.trail[this.trail.length - 1];
+      for (let j = 0; j <= 15; j++) {
+        const f = j / 15;
+        dot(x + (50 - x) * f, latest.y, 0, 0.8, hsl(0, 0, 80, 0.3));
+      }
+    }
+  }
+});
+
+// 3. VORTEX ─────────────────────────────────────────────────────────
+registerSim('vortex', {
+  name: 'Vortex', desc: 'Rotating disk of charged particles collapsing into a singularity.',
+  controls: [
+    { id: 'vcnt', label: 'Particles', min: 200, max: 2000, step: 50, default: 800 },
+    { id: 'vspd', label: 'Spin Speed', min: 0.2, max: 5, step: 0.1, default: 1.5 },
+    { id: 'vrad', label: 'Radius', min: 50, max: 300, step: 5, default: 200 },
+  ],
+  draw() {
+    const N = params.vcnt, R = params.vrad;
+    for (let i = 0; i < N; i++) {
+      const f = i / N;
+      const r = R * Math.pow(f, 0.6);
+      const angle = f * Math.PI * 20 + t * params.vspd * (1 - f * 0.7);
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+      const y = (f - 0.5) * 20;
+      const heat = f;
+      dot(x, y, z, 1.5, hsl(heat < 0.5 ? 0 : 20, 100, 40 + heat * 40, 0.7));
+    }
+  }
+});
+
+// 4. PHYSICS ────────────────────────────────────────────────────────
+registerSim('physics', {
+  name: 'Physics — Gravity Field', desc: 'Particles orbiting a central gravity well.',
+  controls: [
+    { id: 'pcnt', label: 'Particles', min: 100, max: 2000, step: 50, default: 600 },
+    { id: 'grav', label: 'Gravity', min: 0.1, max: 3, step: 0.1, default: 1 },
+  ],
+  pts: null,
+  draw() {
+    if (!this.pts || this.pts.length !== Math.floor(params.pcnt)) {
+      this.pts = Array.from({ length: Math.floor(params.pcnt) }, () => {
+        const r = 80 + Math.random() * 180;
+        const a = Math.random() * Math.PI * 2;
+        const b = (Math.random() - 0.5) * 0.4;
+        return { r, a, b, spd: 0.3 + Math.random() * 0.5, col: Math.random() };
+      });
+    }
+    this.pts.forEach(p => {
+      p.a += (p.spd / p.r) * params.grav * 20;
+      const x = Math.cos(p.a) * p.r * Math.cos(p.b);
+      const z = Math.sin(p.a) * p.r * Math.cos(p.b);
+      const y = p.r * Math.sin(p.b);
+      dot(x, y, z, 1.5, hsl(200 + p.col * 160, 80, 60, 0.8));
+    });
+    // central attractor
+    for (let i = 0; i < 8; i++) dot(0, 0, 0, 5 + i, hsl(180, 100, 70, 0.1));
+  }
+});
+
+// 5. ELECTRIC MOTOR ─────────────────────────────────────────────────
+registerSim('motor', {
+  name: 'Brushless Motor Architecture', desc: 'Orange: stator windings. Blue: rotor magnets. Cyan: magnetic flux.',
+  controls: [
+    { id: 'mspd', label: 'Motor Speed', min: 0, max: 10, step: 0.1, default: 3 },
+    { id: 'srad', label: 'Stator Radius', min: 20, max: 80, step: 1, default: 50 },
+    { id: 'flux', label: 'Flux Intensity', min: 0.5, max: 3, step: 0.1, default: 1.5 },
+  ],
+  draw() {
+    const SR = params.srad, N = 6;
+    // Stator coils
+    for (let k = 0; k < N; k++) {
+      const ang = (k / N) * Math.PI * 2;
+      const cx = Math.cos(ang) * SR, cz = Math.sin(ang) * SR;
+      for (let i = 0; i < 60; i++) {
+        const u = (i / 60 - 0.5) * 120;
+        const wobble = Math.sin(i * 0.3 + t) * 8;
+        dot(cx + wobble * 0.2, u, cz + wobble * 0.2, 2, hsl(35, 100, 60, 0.85));
+      }
+    }
+    // Rotor (magnets)
+    const rotOff = t * params.mspd;
+    for (let k = 0; k < 4; k++) {
+      const ang = (k / 4) * Math.PI * 2 + rotOff;
+      const rx = Math.cos(ang) * (SR * 0.5), rz = Math.sin(ang) * (SR * 0.5);
+      for (let i = 0; i < 40; i++) {
+        const u = (i / 40 - 0.5) * 100;
+        dot(rx, u, rz, 2.5, hsl(210, 100, 65, 0.9));
+      }
+    }
+    // Flux lines
+    for (let f = 0; f < 80; f++) {
+      const a = (f / 80) * Math.PI * 2 + rotOff * params.flux;
+      const r = SR * 0.8 + Math.sin(f * 0.4 + t) * 10;
+      dot(Math.cos(a) * r, Math.sin(f * 0.5) * 30, Math.sin(a) * r, 1.5, hsl(180, 100, 70, 0.5));
+    }
+    // Shaft
+    for (let i = 0; i < 40; i++) dot(0, (i - 20) * 4, 0, 2, hsl(45, 80, 60, 0.9));
+  }
+});
+
+// 6. ARC REACTOR ────────────────────────────────────────────────────
+registerSim('arc', {
+  name: 'Arc Reactor Core', desc: 'Toroidal plasma containment with magnetic confinement rings.',
+  controls: [
+    { id: 'arcR', label: 'Core Radius', min: 30, max: 120, step: 1, default: 60 },
+    { id: 'rings', label: 'Containment Rings', min: 2, max: 10, step: 1, default: 6 },
+    { id: 'glow', label: 'Plasma Glow', min: 0.2, max: 3, step: 0.1, default: 1 },
+  ],
+  draw() {
+    const R = params.arcR, rings = Math.floor(params.rings);
+    // Magnetic rings
+    for (let r = 0; r < rings; r++) {
+      const rr = R * (1 + r * 0.25);
+      const tilt = r * 0.08;
+      for (let i = 0; i < 120; i++) {
+        const a = (i / 120) * Math.PI * 2;
+        const x = Math.cos(a) * rr;
+        const z = Math.sin(a) * rr;
+        const y = Math.sin(a + tilt) * rr * 0.15;
+        dot(x, y, z, 2, hsl(200, 100, 70, 0.6 + Math.sin(a + t) * 0.3));
+      }
+    }
+    // Plasma core
+    for (let i = 0; i < 200; i++) {
+      const a = (i / 200) * Math.PI * 2;
+      const noise = Math.sin(a * 7 + t * 3) * 8;
+      const cr = 18 + noise;
+      dot(Math.cos(a) * cr, Math.sin(a + t) * 12, Math.sin(a) * cr, 2.5 * params.glow, hsl(180, 100, 80, 0.9));
+    }
+    // Core glow
+    for (let i = 0; i < 5; i++) {
+      const gr = (i + 1) * 4;
+      for (let a = 0; a < 20; a++) {
+        const ang = (a / 20) * Math.PI * 2;
+        dot(Math.cos(ang) * gr, 0, Math.sin(ang) * gr, 3, hsl(180, 100, 90, 0.8 - i * 0.15));
+      }
+    }
+  }
+});
+
+// 7. DNA TESSERACT ──────────────────────────────────────────────────
+registerSim('dna', {
+  name: 'DNA Tesseract Nanowire', desc: 'Nested DNA cubic frameworks assembled into a conductive wire.',
+  controls: [
+    { id: 'outerS', label: 'Outer Size', min: 20, max: 80, step: 1, default: 40 },
+    { id: 'innerR', label: 'Inner Ratio', min: 0.2, max: 0.8, step: 0.05, default: 0.5 },
+    { id: 'wspc',  label: 'Wire Spacing', min: 5, max: 30, step: 1, default: 12 },
+  ],
+  draw() {
+    const S = params.outerS, IR = params.innerR, W = params.wspc;
+    const cubeEdges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+    const cubeVerts = (s) => {
+      const h = s / 2;
+      return [[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];
+    };
+    for (let seg = -5; seg <= 5; seg++) {
+      const ox = seg * W * 2;
+      const rot = t * 0.5 + seg * 0.3;
+      // Outer cube
+      const ov = cubeVerts(S);
+      cubeEdges.forEach(([a, b]) => {
+        for (let j = 0; j <= 12; j++) {
+          const f = j / 12;
+          const x = ov[a][0] + (ov[b][0] - ov[a][0]) * f;
+          const y = ov[a][1] + (ov[b][1] - ov[a][1]) * f;
+          const z = ov[a][2] + (ov[b][2] - ov[a][2]) * f;
+          const rx = x * Math.cos(rot) - z * Math.sin(rot);
+          const rz = x * Math.sin(rot) + z * Math.cos(rot);
+          dot(ox + rx, y, rz, 1.5, hsl(120, 100, 55, 0.85));
+        }
+      });
+      // Inner cube
+      const iv = cubeVerts(S * IR);
+      cubeEdges.forEach(([a, b]) => {
+        for (let j = 0; j <= 8; j++) {
+          const f = j / 8;
+          const x = iv[a][0] + (iv[b][0] - iv[a][0]) * f;
+          const y = iv[a][1] + (iv[b][1] - iv[a][1]) * f;
+          const z = iv[a][2] + (iv[b][2] - iv[a][2]) * f;
+          const rx = x * Math.cos(-rot) - z * Math.sin(-rot);
+          const rz = x * Math.sin(-rot) + z * Math.cos(-rot);
+          dot(ox + rx, y, rz, 1.2, hsl(30, 100, 60, 0.7));
+        }
+      });
+    }
+    // Electron cloud line
+    for (let i = 0; i < 60; i++) {
+      const ex = (i / 60 - 0.5) * W * 22;
+      const ey = Math.sin(i * 0.4 + t * 3) * 8;
+      dot(ex, ey, 0, 1.2, hsl(200, 100, 70, 0.5));
+    }
+  }
+});
+
+// 8. EM INDUCTION ───────────────────────────────────────────────────
+registerSim('em', {
+  name: 'Electromagnetic Induction', desc: 'Faraday\'s law: changing magnetic flux induces circular electric fields.',
+  controls: [
+    { id: 'emspd', label: 'Field Speed', min: 0.1, max: 5, step: 0.1, default: 1.5 },
+    { id: 'emR',   label: 'Coil Radius', min: 30, max: 120, step: 5, default: 80 },
+    { id: 'emN',   label: 'Loops', min: 2, max: 10, step: 1, default: 5 },
+  ],
+  draw() {
+    const N = Math.floor(params.emN), R = params.emR;
+    for (let k = 0; k < N; k++) {
+      const oz = (k - N / 2) * 30;
+      const phase = t * params.emspd + k * 0.5;
+      // Coil ring
+      for (let i = 0; i < 80; i++) {
+        const a = (i / 80) * Math.PI * 2;
+        dot(Math.cos(a) * R, Math.sin(a + phase) * 20, oz + Math.sin(a) * R * 0.15, 2, hsl(35, 100, 60, 0.8));
+      }
+      // Induced E field ring
+      const eR = R * 1.3;
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2 + t * params.emspd * 0.7;
+        dot(Math.cos(a) * eR, 0, oz + Math.sin(a) * eR * 0.2, 1.5, hsl(200, 100, 70, 0.5));
+      }
+    }
+    // B field lines
+    for (let i = 0; i < 30; i++) {
+      const bx = (Math.random() - 0.5) * 20;
+      dot(bx, (i - 15) * 10, 0, 1, hsl(140, 80, 60, 0.4));
+    }
+  }
+});
+
+// 9. ODYSSEY ────────────────────────────────────────────────────────
+registerSim('odyssey', {
+  name: 'The Odyssey', desc: 'Odysseus\' ship navigating the wine-dark sea.',
+  controls: [
+    { id: 'shipSc', label: 'Ship Scale', min: 5, max: 40, step: 1, default: 20 },
+    { id: 'wave',   label: 'Sea Wave Speed', min: 0, max: 5, step: 0.1, default: 1.5 },
+    { id: 'wind',   label: 'Wind Force', min: 0, max: 20, step: 0.5, default: 8 },
+  ],
+  draw() {
+    const SC = params.shipSc;
+    // Sea
+    for (let i = -60; i <= 60; i++) {
+      for (let j = -60; j <= 60; j++) {
+        const wv = Math.sin(i * 0.2 + t * params.wave) * 8 + Math.cos(j * 0.15 + t * params.wave * 0.7) * 6;
+        const d = Math.sqrt(i * i + j * j);
+        if (d > 65) continue;
+        dot(i * 5, wv - 60, j * 5, 1, hsl(220, 60, 30 + wv * 1.5, 0.6));
+      }
+    }
+    // Hull
+    for (let u = -1; u <= 1; u += 0.05) {
+      const hx = u * SC;
+      const hy = (u * u * 0.6 - 0.3) * SC - 30;
+      const hw = (1 - u * u) * SC * 0.5;
+      dot(hx, hy, hw, 2.5, hsl(40, 60, 50, 0.9));
+      dot(hx, hy, -hw, 2.5, hsl(40, 60, 50, 0.9));
+    }
+    // Mast
+    for (let y = -40; y <= 20; y += 3) dot(0, y - 20, 0, 2, hsl(40, 40, 40, 0.9));
+    // Sail
+    for (let sx = -SC * 0.8; sx <= SC * 0.8; sx += 4) {
+      const windBow = Math.sin(t * 0.5) * params.wind;
+      for (let sy = -40; sy <= 10; sy += 4) {
+        const bow = Math.sin((sx / SC) * Math.PI) * (5 + windBow);
+        dot(sx * 0.5, sy, bow, 1.5, hsl(0, 0, 85, 0.7));
+      }
+    }
+  }
+});
+
+// 10. BULB ──────────────────────────────────────────────────────────
+registerSim('bulb', {
+  name: 'Incandescent Swarm', desc: 'Drone formation simulating a realistic light bulb with dynamic glowing filament.',
+  controls: [
+    { id: 'bsc',    label: 'Bulb Scale', min: 2, max: 10, step: 0.5, default: 5 },
+    { id: 'power',  label: 'Power Level', min: 0, max: 1, step: 0.05, default: 0.9 },
+    { id: 'fglow',  label: 'Filament Glow', min: 0, max: 1, step: 0.05, default: 0.85 },
+  ],
+  draw() {
+    const R = params.bsc * 20, glow = params.fglow, pwr = params.power;
+    // Glass shell
+    for (let lat = 0; lat < 40; lat++) {
+      const a = (lat / 40) * Math.PI;
+      for (let lon = 0; lon < 60; lon++) {
+        const b = (lon / 60) * Math.PI * 2;
+        const r = lat < 25 ? R : R * (1 - (lat - 25) * 0.03);
+        dot(
+          Math.sin(a) * Math.cos(b) * r,
+          Math.cos(a) * r + 20,
+          Math.sin(a) * Math.sin(b) * r,
+          1.2, hsl(140, 60, 50, 0.25)
+        );
+      }
+    }
+    // Filament coil
+    for (let i = 0; i < 120; i++) {
+      const ft = i / 120;
+      const coilA = ft * Math.PI * 8;
+      const coilR = 8 + Math.sin(ft * Math.PI) * 5;
+      const fy = ft * 60 - 10;
+      const flicker = 1 + Math.sin(t * 10 + ft * 5) * 0.05 * glow;
+      dot(
+        Math.cos(coilA) * coilR * flicker, fy, Math.sin(coilA) * coilR * flicker,
+        3 * glow, hsl(50, 100, 70 + pwr * 20, 0.95)
+      );
+    }
+    // Neck/base
+    for (let i = 0; i < 20; i++) {
+      const a = (i / 20) * Math.PI * 2;
+      for (let h = -50; h < -20; h += 3)
+        dot(Math.cos(a) * 15, h, Math.sin(a) * 15, 1.5, hsl(0, 0, 40, 0.8));
+    }
+  }
+});
+
+// 11. BLACK HOLE ────────────────────────────────────────────────────
+registerSim('blackhole', {
+  name: 'Black Hole — Accretion Disk', desc: 'Relativistic particle orbits bending around a Schwarzschild singularity.',
+  controls: [
+    { id: 'bhmass', label: 'Mass', min: 0.5, max: 5, step: 0.1, default: 2 },
+    { id: 'bhN',    label: 'Particles', min: 200, max: 2000, step: 50, default: 800 },
+  ],
+  draw() {
+    const M = params.bhmass, N = params.bhN;
+    for (let i = 0; i < N; i++) {
+      const f = i / N;
+      const r = 40 + Math.pow(f, 0.5) * 200 * M;
+      const angle = f * Math.PI * 30 + t * (1 / (r * 0.01 + 0.5));
+      const incl = Math.sin(f * 7) * 0.15;
+      const x = Math.cos(angle) * r;
+      const z = Math.sin(angle) * r;
+      const y = Math.sin(incl) * r * 0.1;
+      const heat = 1 - f;
+      dot(x, y, z, 1.5, hsl(heat * 40, 100, 30 + heat * 50, 0.8));
+    }
+    // Event horizon
+    for (let i = 0; i < 30; i++) {
+      const a = (i / 30) * Math.PI * 2;
+      dot(Math.cos(a) * 25, Math.sin(a * 2) * 5, Math.sin(a) * 25, 3, hsl(0, 0, 0, 1));
+    }
+    // Jet
+    for (let j = 0; j < 80; j++) {
+      dot((Math.random() - 0.5) * 10, j * 5, (Math.random() - 0.5) * 10, 1.5, hsl(200, 100, 80, 0.4));
+      dot((Math.random() - 0.5) * 10, -j * 5, (Math.random() - 0.5) * 10, 1.5, hsl(200, 100, 80, 0.4));
+    }
+  }
+});
+
+// 12. CREATION OF STAR ──────────────────────────────────────────────
+registerSim('star', {
+  name: 'Creation of a Star', desc: 'Protostellar collapse — gas cloud contracting under gravity.',
+  controls: [
+    { id: 'stage',  label: 'Stage', min: 0, max: 1, step: 0.01, default: 0.5 },
+    { id: 'stN',    label: 'Particles', min: 200, max: 2000, step: 50, default: 800 },
+  ],
+  draw() {
+    const S = params.stage, N = params.stN;
+    for (let i = 0; i < N; i++) {
+      const f = i / N;
+      const phi = Math.acos(1 - 2 * f);
+      const theta = Math.PI * (1 + Math.sqrt(5)) * i + t * 0.1;
+      const cloudR = 250 * (1 - S * 0.85);
+      const x = Math.sin(phi) * Math.cos(theta) * cloudR;
+      const y = Math.cos(phi) * cloudR;
+      const z = Math.sin(phi) * Math.sin(theta) * cloudR;
+      const heat = S + f * 0.3;
+      dot(x, y, z, 1 + S * 2, hsl(heat * 40, 100, 30 + heat * 50, 0.7));
+    }
+    // Core glow
+    const coreR = 15 + S * 60;
+    for (let i = 0; i < 50; i++) {
+      const a = (i / 50) * Math.PI * 2;
+      dot(Math.cos(a) * coreR * (1 + S), 0, Math.sin(a) * coreR * (1 + S), 2 + S * 3, hsl(50, 100, 80, 0.9 * S));
+    }
+  }
+});
+
+// 13. STRING THEORY ─────────────────────────────────────────────────
+registerSim('string', {
+  name: 'String Theory', desc: 'Vibrating 1-dimensional strings in compactified extra dimensions.',
+  controls: [
+    { id: 'stmode', label: 'Vibration Mode', min: 1, max: 8, step: 1, default: 3 },
+    { id: 'stspd',  label: 'Speed', min: 0.1, max: 5, step: 0.1, default: 1 },
+    { id: 'stcnt',  label: 'Strings', min: 5, max: 40, step: 1, default: 15 },
+  ],
+  draw() {
+    const N = Math.floor(params.stcnt), M = Math.floor(params.stmode);
+    for (let s = 0; s < N; s++) {
+      const offset = (s / N - 0.5) * 200;
+      const hueShift = s / N;
+      for (let i = 0; i <= 100; i++) {
+        const u = i / 100;
+        const phase = u * Math.PI * M + t * params.stspd + s * 0.5;
+        const amp = 40 + Math.sin(s * 1.3) * 20;
+        const x = offset;
+        const y = (u - 0.5) * 200;
+        const z = Math.sin(phase) * amp;
+        dot(x, y, z, 1.5, hsl(160 + hueShift * 180, 80, 60, 0.8));
+      }
+    }
+  }
+});
+
+// 14. SINGULARITY ───────────────────────────────────────────────────
+registerSim('singular', {
+  name: 'Singularity', desc: 'Spacetime geometry crushing toward infinite density.',
+  controls: [
+    { id: 'sigN', label: 'Particles', min: 200, max: 2000, step: 50, default: 1000 },
+    { id: 'sigS', label: 'Collapse Speed', min: 0.1, max: 3, step: 0.1, default: 0.8 },
+  ],
+  draw() {
+    const N = params.sigN;
+    for (let i = 0; i < N; i++) {
+      const f = i / N;
+      const r = 200 * Math.pow(Math.abs(Math.sin(f * 7 + t * params.sigS * 0.1)), 2);
+      const theta = f * Math.PI * 40;
+      const phi = f * Math.PI * 13;
+      dot(
+        Math.sin(phi) * Math.cos(theta) * r,
+        Math.cos(phi) * r * 0.8,
+        Math.sin(phi) * Math.sin(theta) * r,
+        1.2 + (1 - f) * 2, hsl(280 + f * 80, 90, 50 + f * 30, 0.7)
+      );
+    }
+  }
+});
+
+// 15. BUTTERFLY ─────────────────────────────────────────────────────
+registerSim('butterfly', {
+  name: 'Butterfly Attractor', desc: 'Peter de Jong attractor traced with luminescent particles.',
+  controls: [
+    { id: 'bfN', label: 'Iterations', min: 500, max: 5000, step: 100, default: 2000 },
+    { id: 'bfa', label: 'Param A', min: -3, max: 3, step: 0.05, default: -2.24 },
+    { id: 'bfb', label: 'Param B', min: -3, max: 3, step: 0.05, default: 0.43 },
+  ],
+  draw() {
+    let x = 0.1, y = 0.1;
+    const a = params.bfa + Math.sin(t * 0.1) * 0.1;
+    const b = params.bfb;
+    const c = -2.2, d = -0.9;
+    const N = Math.floor(params.bfN);
+    for (let i = 0; i < N; i++) {
+      const nx = Math.sin(a * y) - Math.cos(b * x);
+      const ny = Math.sin(c * x) - Math.cos(d * y);
+      x = nx; y = ny;
+      dot(x * 80, y * 80, Math.sin(i * 0.01 + t) * 30, 1.5, hsl(280 + i / N * 80, 90, 65, 0.6));
+    }
+  }
+});
+
+// 16. FIRE ──────────────────────────────────────────────────────────
+registerSim('fire', {
+  name: 'Fire', desc: 'Turbulent buoyancy-driven combustion particle field.',
+  controls: [
+    { id: 'fheat', label: 'Heat', min: 0.1, max: 3, step: 0.1, default: 1.5 },
+    { id: 'fN',    label: 'Particles', min: 100, max: 1000, step: 50, default: 400 },
+  ],
+  pts: [],
+  draw() {
+    const N = Math.floor(params.fN);
+    while (this.pts.length < N) {
+      this.pts.push({ x: (Math.random() - 0.5) * 80, y: -60, z: (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 2, vy: -(1 + Math.random() * 3) * params.fheat, life: 1 });
+    }
+    this.pts = this.pts.slice(0, N);
+    this.pts.forEach(p => {
+      p.x += p.vx + Math.sin(t * 2 + p.y * 0.1) * 0.5;
+      p.y += p.vy;
+      p.life -= 0.015;
+      if (p.life <= 0) { p.x = (Math.random() - 0.5) * 80; p.y = -60; p.z = (Math.random() - 0.5) * 40; p.vy = -(1 + Math.random() * 3) * params.fheat; p.life = 1; }
+      const heat = p.life;
+      dot(p.x, p.y, p.z, 2 * heat, hsl(heat < 0.4 ? 0 : heat < 0.7 ? 30 : 50, 100, 40 + heat * 40, heat));
+    });
+  }
+});
+
+// 17. DNA DOUBLE HELIX ──────────────────────────────────────────────
+registerSim('dna2', {
+  name: 'DNA Double Helix', desc: 'Nucleotide base pairs connected across a rotating double helix strand.',
+  controls: [
+    { id: 'dnaN', label: 'Base Pairs', min: 10, max: 60, step: 1, default: 30 },
+    { id: 'dnaS', label: 'Spin Speed', min: 0, max: 5, step: 0.1, default: 1 },
+    { id: 'dnaR', label: 'Radius', min: 20, max: 80, step: 1, default: 40 },
+  ],
+  draw() {
+    const N = Math.floor(params.dnaN), R = params.dnaR;
+    for (let i = 0; i < N; i++) {
+      const f = i / N;
+      const a = f * Math.PI * 10 + t * params.dnaS;
+      const y = (f - 0.5) * 200;
+      const x1 = Math.cos(a) * R, z1 = Math.sin(a) * R;
+      const x2 = Math.cos(a + Math.PI) * R, z2 = Math.sin(a + Math.PI) * R;
+      // Strand 1
+      dot(x1, y, z1, 3, hsl(160, 100, 60, 0.9));
+      // Strand 2
+      dot(x2, y, z2, 3, hsl(210, 100, 60, 0.9));
+      // Base pair bridge
+      if (i % 3 === 0) {
+        for (let j = 0; j <= 8; j++) {
+          const bf = j / 8;
+          dot(x1 + (x2 - x1) * bf, y, z1 + (z2 - z1) * bf, 1.5, hsl(40, 80, 65, 0.6));
+        }
+      }
+    }
+  }
+});
+
+// 18. ATOM RINGS ────────────────────────────────────────────────────
+registerSim('atom', {
+  name: 'Atom Rings', desc: 'Electron probability orbitals around a nucleus.',
+  controls: [
+    { id: 'shells', label: 'Shells', min: 1, max: 6, step: 1, default: 3 },
+    { id: 'aspd',   label: 'Orbital Speed', min: 0.1, max: 5, step: 0.1, default: 1.5 },
+  ],
+  draw() {
+    const SH = Math.floor(params.shells);
+    // Nucleus
+    for (let i = 0; i < 5; i++) dot(0, 0, 0, 6 - i, hsl(50, 100, 70, 0.8 - i * 0.15));
+    // Shells
+    for (let s = 1; s <= SH; s++) {
+      const r = s * 60;
+      const tilt = s * 0.4;
+      const spd = params.aspd / s;
+      for (let i = 0; i < 80; i++) {
+        const a = (i / 80) * Math.PI * 2 + t * spd;
+        dot(Math.cos(a) * r, Math.sin(a + tilt) * r * 0.3, Math.sin(a) * r, 2, hsl(200 + s * 30, 90, 65, 0.7));
+      }
+      // Electron
+      const ea = t * spd * 2;
+      dot(Math.cos(ea) * r, Math.sin(ea + tilt) * r * 0.3, Math.sin(ea) * r, 5, hsl(50, 100, 80, 1));
+    }
+  }
+});
+
+// 19. LUNAR ECLIPSE ─────────────────────────────────────────────────
+registerSim('lunar', {
+  name: 'Lunar Eclipse', desc: 'Earth\'s shadow gradient sweeping across the lunar surface.',
+  controls: [
+    { id: 'lunR', label: 'Moon Radius', min: 30, max: 100, step: 1, default: 60 },
+    { id: 'lunP', label: 'Eclipse Phase', min: 0, max: 1, step: 0.01, default: 0.5 },
+  ],
+  draw() {
+    const R = params.lunR, phase = params.lunP;
+    // Shadow offset
+    const shadowX = (phase * 2 - 1) * R * 1.5;
+    for (let lat = 0; lat < 50; lat++) {
+      const a = (lat / 50) * Math.PI;
+      for (let lon = 0; lon < 80; lon++) {
+        const b = (lon / 80) * Math.PI * 2;
+        const x = Math.sin(a) * Math.cos(b) * R;
+        const y = Math.cos(a) * R;
+        const z = Math.sin(a) * Math.sin(b) * R;
+        // Distance from shadow centre
+        const dist = Math.sqrt((x - shadowX) ** 2 + y ** 2);
+        const shadow = Math.max(0, 1 - dist / (R * 0.8));
+        dot(x, y, z, 1.5, shadow > 0.3 ? hsl(10, 80, 30, 0.9) : hsl(0, 0, 80, 0.9));
+      }
+    }
+  }
+});
+
+// 20. SOLAR SYSTEM ──────────────────────────────────────────────────
+registerSim('solar', {
+  name: 'Solar System in Milky Way', desc: 'Heliocentric orbits with relative size and speed.',
+  controls: [
+    { id: 'sspd', label: 'Time Scale', min: 0.1, max: 10, step: 0.1, default: 2 },
+    { id: 'sscl', label: 'Orbit Scale', min: 0.3, max: 2, step: 0.05, default: 0.8 },
+  ],
+  planets: [
+    { name: 'Mercury', r: 30, speed: 4.15, size: 2, h: 30 },
+    { name: 'Venus',   r: 55, speed: 1.62, size: 3, h: 50 },
+    { name: 'Earth',   r: 80, speed: 1,    size: 3.5, h: 210 },
+    { name: 'Mars',    r: 105, speed: 0.53, size: 2.5, h: 10 },
+    { name: 'Jupiter', r: 160, speed: 0.084, size: 7, h: 40 },
+    { name: 'Saturn',  r: 210, speed: 0.034, size: 6, h: 45 },
+    { name: 'Uranus',  r: 250, speed: 0.012, size: 4.5, h: 180 },
+    { name: 'Neptune', r: 285, speed: 0.006, size: 4, h: 220 },
+  ],
+  draw() {
+    const SC = params.sscl;
+    // Sun
+    for (let i = 0; i < 6; i++) dot(0, 0, 0, 12 - i * 1.5, hsl(45, 100, 70, 0.8 - i * 0.12));
+    // Orbits + planets
+    this.planets.forEach(p => {
+      const r = p.r * SC;
+      // Orbit ring
+      for (let i = 0; i < 60; i++) {
+        const a = (i / 60) * Math.PI * 2;
+        dot(Math.cos(a) * r, 0, Math.sin(a) * r, 0.5, hsl(0, 0, 50, 0.15));
+      }
+      // Planet
+      const pa = t * p.speed * params.sspd * 0.5;
+      dot(Math.cos(pa) * r, 0, Math.sin(pa) * r, p.size, hsl(p.h, 70, 65, 1));
+      // Saturn rings
+      if (p.name === 'Saturn') {
+        for (let i = 0; i < 40; i++) {
+          const ra = (i / 40) * Math.PI * 2;
+          dot(Math.cos(pa) * r + Math.cos(ra) * (p.size + 5), 0, Math.sin(pa) * r + Math.sin(ra) * (p.size + 5) * 0.3, 1, hsl(45, 50, 70, 0.5));
+        }
+      }
+    });
+  }
+});
+
+// ─── Main loop ─────────────────────────────────────────────────────
+let lastTime = 0, fps = 0, fpsAcc = 0, fpsFrames = 0;
+
+function loop(now) {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  fpsAcc += dt; fpsFrames++;
+  if (fpsAcc >= 0.5) { fps = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; document.getElementById('fps').textContent = fps + ' fps'; }
+
+  const w = canvas.width, h = canvas.height;
+  ctx.fillStyle = 'rgba(5,6,8,0.18)';
+  ctx.fillRect(0, 0, w, h);
+
+  if (current) {
+    t += 0.016;
+    current.draw();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+// ─── AI btn placeholder ────────────────────────────────────────────
+document.getElementById('ai-btn').addEventListener('click', () => {
+  const val = document.getElementById('ai-input').value.trim();
+  if (!val) return;
+  document.getElementById('ai-btn').textContent = '⟳ Coming Soon...';
+  setTimeout(() => document.getElementById('ai-btn').textContent = '⚡ Generate Shape', 1500);
+});
+
+// ─── Boot ──────────────────────────────────────────────────────────
+requestAnimationFrame(loop);
+// Auto-select first
+switchSim('vortex');
+</script>
+</body>
+</html>
