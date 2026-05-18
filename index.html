@@ -3,1142 +3,1656 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Particle Simulator</title>
+<title>PARTICLE FIELD ENGINE — MK-IV</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
 
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-  :root {
-    --bg: #050608;
-    --panel: #0a0c10;
-    --border: #1a1f2e;
-    --accent: #00ff88;
-    --accent2: #0088ff;
-    --accent3: #ff4466;
-    --text: #e0e8f0;
-    --muted: #4a5568;
-    --panel-w: 260px;
-  }
+:root {
+  --c0: #020406;
+  --c1: #060c10;
+  --c2: #0a1520;
+  --border: rgba(0,180,255,0.12);
+  --border-bright: rgba(0,180,255,0.35);
+  --accent: #00b4ff;
+  --accent2: #00ff9d;
+  --danger: #ff3c3c;
+  --warn: #ffaa00;
+  --text: #8ab8cc;
+  --text-dim: #2a4a5a;
+  --text-bright: #c8e8f8;
+  --mono: 'Share Tech Mono', monospace;
+  --hud: 'Orbitron', sans-serif;
+}
 
-  html, body { width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: 'Space Mono', monospace; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: var(--c0);
+  color: var(--text);
+  font-family: var(--mono);
+  cursor: crosshair;
+  user-select: none;
+}
 
-  /* Layout */
-  #app { display: flex; height: 100vh; }
+/* ── CANVAS ── */
+#canvas-wrap { position: fixed; inset: 0; z-index: 0; }
+canvas { display: block; width: 100%; height: 100%; }
 
-  /* Sidebar */
-  #sidebar {
-    width: var(--panel-w);
-    background: var(--panel);
-    border-right: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    flex-shrink: 0;
-    z-index: 10;
-  }
+/* ── HUD OVERLAY ── */
+#hud-overlay {
+  position: fixed; inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
 
-  #sidebar-header {
-    padding: 18px 16px 14px;
-    border-bottom: 1px solid var(--border);
-  }
+/* Corner brackets */
+.corner {
+  position: absolute;
+  width: 40px; height: 40px;
+  border-color: rgba(0,180,255,0.25);
+  border-style: solid;
+}
+.corner.tl { top: 12px; left: 12px; border-width: 1px 0 0 1px; }
+.corner.tr { top: 12px; right: 12px; border-width: 1px 1px 0 0; }
+.corner.bl { bottom: 12px; left: 12px; border-width: 0 0 1px 1px; }
+.corner.br { bottom: 12px; right: 12px; border-width: 0 1px 1px 0; }
 
-  #sidebar-header h1 {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 13px;
-    letter-spacing: 0.15em;
-    color: var(--accent);
-    text-transform: uppercase;
-  }
+/* Top bar */
+#topbar {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 38px;
+  background: linear-gradient(180deg, rgba(0,20,35,0.95) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 20px;
+  gap: 24px;
+  pointer-events: none;
+}
+#topbar .logo {
+  font-family: var(--hud);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .25em;
+  color: var(--accent);
+  text-shadow: 0 0 20px rgba(0,180,255,0.6);
+}
+#topbar .sep { width: 1px; height: 16px; background: var(--border-bright); }
+.hud-stat { font-size: 8px; letter-spacing: .15em; color: var(--text-dim); }
+.hud-stat span { color: var(--accent2); }
+#sys-time { margin-left: auto; font-size: 9px; letter-spacing: .1em; color: var(--text-dim); }
 
-  #sidebar-header p {
-    font-size: 9px;
-    color: var(--muted);
-    margin-top: 3px;
-    letter-spacing: 0.08em;
-  }
+/* Scanline effect */
+#scanlines {
+  position: fixed; inset: 0; z-index: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.04) 2px,
+    rgba(0,0,0,0.04) 4px
+  );
+}
 
-  #sim-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 10px 0;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-  }
+/* Bottom status bar */
+#statusbar {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 28px;
+  background: linear-gradient(0deg, rgba(0,20,35,0.95) 0%, transparent 100%);
+  border-top: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 20px; gap: 20px;
+  pointer-events: none;
+}
+.sbar-item { font-size: 7.5px; letter-spacing: .12em; color: var(--text-dim); display: flex; gap: 6px; align-items: center; }
+.sbar-item .dot { width: 4px; height: 4px; border-radius: 50%; background: var(--accent2); box-shadow: 0 0 6px var(--accent2); animation: pulse 2s infinite; }
+.sbar-item .dot.warn { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
 
-  .sim-category {
-    padding: 6px 14px 4px;
-    font-size: 8px;
-    letter-spacing: 0.15em;
-    color: var(--muted);
-    text-transform: uppercase;
-  }
+/* ── FLOATING PANEL BASE ── */
+.panel {
+  position: fixed;
+  z-index: 10;
+  background: rgba(4, 10, 18, 0.92);
+  backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  min-width: 0;
+  pointer-events: all;
+}
+.panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: linear-gradient(135deg, rgba(0,180,255,0.04) 0%, transparent 60%);
+  pointer-events: none;
+}
+.panel-header {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  background: rgba(0,20,40,0.4);
+}
+.panel-header:active { cursor: grabbing; }
+.panel-title {
+  font-family: var(--hud);
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: .2em;
+  color: var(--accent);
+  text-transform: uppercase;
+  flex: 1;
+}
+.panel-tag {
+  font-size: 7px;
+  letter-spacing: .1em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  padding: 1px 5px;
+  border-radius: 1px;
+}
+.panel-dot {
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+  animation: pulse 1.8s infinite;
+}
 
-  .sim-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 14px;
-    cursor: pointer;
-    transition: background 0.15s;
-    border-left: 2px solid transparent;
-    font-size: 10px;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: #8899aa;
-  }
+/* ── SIMULATION LIST PANEL ── */
+#panel-sims {
+  top: 50px; left: 18px;
+  width: 232px;
+}
+#sim-scroll {
+  max-height: 420px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,180,255,0.2) transparent;
+}
+#sim-scroll::-webkit-scrollbar { width: 2px; }
+#sim-scroll::-webkit-scrollbar-thumb { background: rgba(0,180,255,0.2); }
+.sim-cat {
+  padding: 8px 12px 3px;
+  font-size: 6.5px;
+  letter-spacing: .2em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px;
+}
+.sim-cat::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+.sim-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 8.5px;
+  letter-spacing: .06em;
+  color: #3a5a6a;
+  text-transform: uppercase;
+  transition: all .12s;
+  border-left: 2px solid transparent;
+  position: relative;
+}
+.sim-row:hover { color: var(--text-bright); background: rgba(0,180,255,0.04); }
+.sim-row.active {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: rgba(0,180,255,0.06);
+}
+.sim-row.active::after {
+  content: '';
+  position: absolute;
+  right: 12px; top: 50%; transform: translateY(-50%);
+  width: 4px; height: 4px; border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+.sim-num {
+  font-size: 7px;
+  color: var(--text-dim);
+  min-width: 14px;
+  font-family: var(--hud);
+}
 
-  .sim-item:hover { background: rgba(0,255,136,0.04); color: var(--text); }
-  .sim-item.active { border-left-color: var(--accent); color: var(--accent); background: rgba(0,255,136,0.06); }
+/* ── CONTROLS PANEL ── */
+#panel-ctrl {
+  top: 50px; right: 18px;
+  width: 215px;
+}
+.ctrl-body { padding: 10px 12px 12px; }
+.ctrl-item { margin-bottom: 13px; }
+.ctrl-row { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 5px; }
+.ctrl-label { font-size: 7.5px; letter-spacing: .08em; color: #4a7a8a; }
+.ctrl-val {
+  font-family: var(--hud);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--accent2);
+  letter-spacing: .05em;
+}
+.slider-track {
+  position: relative; height: 2px;
+  background: rgba(0,180,255,0.12);
+  border-radius: 1px;
+}
+.slider-fill {
+  position: absolute; left: 0; top: 0; height: 100%;
+  background: linear-gradient(90deg, rgba(0,180,255,0.4), var(--accent));
+  border-radius: 1px;
+  pointer-events: none;
+}
+input[type=range] {
+  position: absolute; inset: -6px 0;
+  width: 100%; opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  height: 14px;
+}
 
-  .sim-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+/* ── INFO PANEL ── */
+#panel-info {
+  bottom: 38px; left: 50%;
+  transform: translateX(-50%);
+  width: 420px;
+  pointer-events: all;
+}
+#panel-info .info-body { padding: 10px 14px; }
+#sim-name-big {
+  font-family: var(--hud);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .2em;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(0,180,255,0.5);
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+#sim-desc {
+  font-size: 8.5px;
+  line-height: 1.7;
+  color: #4a7a8a;
+  letter-spacing: .04em;
+}
 
-  /* AI Section */
-  #ai-section {
-    border-top: 1px solid var(--border);
-    padding: 14px;
-  }
+/* ── AI PANEL ── */
+#panel-ai {
+  bottom: 38px; right: 18px;
+  width: 210px;
+}
+.ai-body { padding: 10px 12px 12px; }
+#ai-input {
+  width: 100%;
+  background: rgba(0,180,255,0.03);
+  border: 1px solid var(--border);
+  color: var(--text-bright);
+  font-family: var(--mono);
+  font-size: 8.5px;
+  line-height: 1.6;
+  padding: 7px 9px;
+  border-radius: 1px;
+  resize: none;
+  height: 54px;
+  outline: none;
+  transition: border-color .2s;
+  letter-spacing: .04em;
+}
+#ai-input:focus { border-color: rgba(0,180,255,0.3); }
+#ai-input::placeholder { color: var(--text-dim); }
+#ai-btn {
+  margin-top: 8px;
+  width: 100%;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid rgba(0,255,157,0.3);
+  color: var(--accent2);
+  font-family: var(--hud);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .15em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border-radius: 1px;
+  transition: all .2s;
+}
+#ai-btn:hover {
+  background: rgba(0,255,157,0.08);
+  border-color: var(--accent2);
+  box-shadow: 0 0 20px rgba(0,255,157,0.1);
+}
+.ai-badge {
+  display: inline-block;
+  margin-top: 7px;
+  font-size: 7px;
+  letter-spacing: .1em;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  padding: 2px 6px;
+  border-radius: 1px;
+}
 
-  #ai-section label {
-    display: block;
-    font-size: 8px;
-    letter-spacing: 0.15em;
-    color: var(--muted);
-    text-transform: uppercase;
-    margin-bottom: 8px;
-  }
+/* ── ORBIT HINT ── */
+#orbit-ring {
+  position: fixed;
+  bottom: 50px; right: 250px;
+  width: 60px; height: 60px;
+  border: 1px solid rgba(0,180,255,0.12);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+#orbit-ring::after {
+  content: '';
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+#orbit-labels {
+  position: fixed;
+  bottom: 45px; right: 318px;
+  z-index: 5; pointer-events: none;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.orbit-lbl { font-size: 6.5px; letter-spacing: .1em; color: var(--text-dim); }
 
-  #ai-input {
-    width: 100%;
-    background: rgba(0,255,136,0.04);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    padding: 8px 10px;
-    border-radius: 4px;
-    resize: none;
-    height: 52px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  #ai-input:focus { border-color: rgba(0,255,136,0.3); }
-  #ai-input::placeholder { color: var(--muted); }
-
-  #ai-btn {
-    margin-top: 8px;
-    width: 100%;
-    padding: 8px;
-    background: transparent;
-    border: 1px solid var(--accent);
-    color: var(--accent);
-    font-family: 'Space Mono', monospace;
-    font-size: 9px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    cursor: pointer;
-    border-radius: 4px;
-    transition: background 0.2s;
-  }
-  #ai-btn:hover { background: rgba(0,255,136,0.1); }
-
-  /* Canvas area */
-  #main {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-  }
-
-  canvas { display: block; width: 100%; height: 100%; }
-
-  /* HUD */
-  #hud-title {
-    position: absolute;
-    top: 20px;
-    left: 24px;
-    pointer-events: none;
-  }
-
-  #hud-title h2 {
-    font-family: 'Syne', sans-serif;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--accent);
-  }
-
-  #hud-title p {
-    font-size: 9px;
-    color: var(--muted);
-    margin-top: 3px;
-    max-width: 360px;
-    line-height: 1.5;
-  }
-
-  /* Controls panel */
-  #controls {
-    position: absolute;
-    top: 16px;
-    right: 16px;
-    background: rgba(10,12,16,0.85);
-    backdrop-filter: blur(12px);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 16px;
-    width: 220px;
-  }
-
-  #controls h3 {
-    font-size: 8px;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 14px;
-  }
-
-  .ctrl-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-  }
-
-  .ctrl-label {
-    font-size: 9px;
-    color: #8899aa;
-    letter-spacing: 0.05em;
-  }
-
-  .ctrl-val {
-    font-size: 9px;
-    color: var(--accent);
-    min-width: 32px;
-    text-align: right;
-  }
-
-  .ctrl-slider {
-    width: 100%;
-    -webkit-appearance: none;
-    height: 2px;
-    background: var(--border);
-    border-radius: 2px;
-    outline: none;
-    margin-top: 4px;
-    cursor: pointer;
-  }
-
-  .ctrl-slider::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    cursor: pointer;
-    box-shadow: 0 0 6px rgba(0,255,136,0.5);
-  }
-
-  /* Labels on canvas */
-  .canvas-label {
-    position: absolute;
-    font-size: 8px;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: var(--accent);
-    padding: 3px 8px;
-    border: 1px solid rgba(0,255,136,0.3);
-    border-radius: 2px;
-    background: rgba(0,255,136,0.06);
-    pointer-events: none;
-    white-space: nowrap;
-  }
-
-  /* FPS */
-  #fps {
-    position: absolute;
-    bottom: 14px;
-    right: 16px;
-    font-size: 8px;
-    color: var(--muted);
-    letter-spacing: 0.1em;
-  }
-
-  /* Orbit hint */
-  #orbit-hint {
-    position: absolute;
-    bottom: 14px;
-    left: 24px;
-    font-size: 8px;
-    color: var(--muted);
-    letter-spacing: 0.08em;
-  }
+/* Loading screen */
+#loader {
+  position: fixed; inset: 0;
+  background: var(--c0);
+  z-index: 100;
+  display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 14px;
+  transition: opacity .6s;
+}
+#loader h1 {
+  font-family: var(--hud);
+  font-size: 14px; font-weight: 900;
+  letter-spacing: .3em;
+  color: var(--accent);
+  text-shadow: 0 0 30px rgba(0,180,255,0.6);
+}
+#loader-bar-wrap {
+  width: 260px; height: 2px;
+  background: rgba(0,180,255,0.1);
+  border-radius: 1px; overflow: hidden;
+}
+#loader-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  width: 0%;
+  transition: width .05s linear;
+  box-shadow: 0 0 12px var(--accent);
+}
+#loader-txt { font-size: 8px; letter-spacing: .15em; color: var(--text-dim); }
 </style>
 </head>
 <body>
-<div id="app">
 
-  <!-- Sidebar -->
-  <div id="sidebar">
-    <div id="sidebar-header">
-      <h1>Particle Simulator</h1>
-      <p>// interactive field engine</p>
-    </div>
+<!-- Loading -->
+<div id="loader">
+  <h1>PARTICLE FIELD ENGINE</h1>
+  <div id="loader-bar-wrap"><div id="loader-bar"></div></div>
+  <div id="loader-txt">INITIALIZING SUBSYSTEMS...</div>
+</div>
 
-    <div id="sim-list">
-      <div class="sim-category">Physics &amp; Waves</div>
-      <div class="sim-item" data-sim="trig">   <span class="sim-dot"></span> Sin/Cos/Tan Waves</div>
-      <div class="sim-item" data-sim="fourier"><span class="sim-dot"></span> Fourier Transform</div>
-      <div class="sim-item" data-sim="vortex"> <span class="sim-dot"></span> Vortex</div>
-      <div class="sim-item" data-sim="physics"><span class="sim-dot"></span> Physics</div>
+<!-- Scanlines -->
+<div id="scanlines"></div>
 
-      <div class="sim-category">Science &amp; Engineering</div>
-      <div class="sim-item" data-sim="motor">  <span class="sim-dot"></span> Electric Motor</div>
-      <div class="sim-item" data-sim="arc">    <span class="sim-dot"></span> Arc Reactor</div>
-      <div class="sim-item" data-sim="dna">    <span class="sim-dot"></span> DNA Tesseract Wire</div>
-      <div class="sim-item" data-sim="em">     <span class="sim-dot"></span> Electromagnetic Induction</div>
+<!-- Canvas -->
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+</div>
 
-      <div class="sim-category">Art &amp; Culture</div>
-      <div class="sim-item" data-sim="odyssey"><span class="sim-dot"></span> Odyssey</div>
-      <div class="sim-item" data-sim="bulb">   <span class="sim-dot"></span> Bulb</div>
-      <div class="sim-item" data-sim="blackhole"><span class="sim-dot"></span> Black Hole</div>
-      <div class="sim-item" data-sim="star">   <span class="sim-dot"></span> Creation of Star</div>
-      <div class="sim-item" data-sim="string"> <span class="sim-dot"></span> String Theory</div>
-      <div class="sim-item" data-sim="singular"><span class="sim-dot"></span> Singularity</div>
-      <div class="sim-item" data-sim="butterfly"><span class="sim-dot"></span> Butterfly</div>
-      <div class="sim-item" data-sim="fire">   <span class="sim-dot"></span> Fire</div>
-      <div class="sim-item" data-sim="dna2">   <span class="sim-dot"></span> DNA Double Helix</div>
-      <div class="sim-item" data-sim="atom">   <span class="sim-dot"></span> Atom Rings</div>
-      <div class="sim-item" data-sim="lunar">  <span class="sim-dot"></span> Lunar Eclipse</div>
-      <div class="sim-item" data-sim="solar">  <span class="sim-dot"></span> Solar System</div>
-    </div>
+<!-- HUD Overlay (non-interactive) -->
+<div id="hud-overlay">
+  <div class="corner tl"></div>
+  <div class="corner tr"></div>
+  <div class="corner bl"></div>
+  <div class="corner br"></div>
 
-    <div id="ai-section">
-      <label>// AI Generate (Beta)</label>
-      <textarea id="ai-input" placeholder="Describe a particle scene...&#10;e.g. 'Supernova explosion'"></textarea>
-      <button id="ai-btn">⚡ Generate Shape</button>
-    </div>
+  <div id="topbar">
+    <span class="logo">PFE // MK-IV</span>
+    <div class="sep"></div>
+    <div class="hud-stat">FPS <span id="fps-val">--</span></div>
+    <div class="sep"></div>
+    <div class="hud-stat">PARTICLES <span id="pt-val">--</span></div>
+    <div class="sep"></div>
+    <div class="hud-stat">MODE <span id="mode-val">--</span></div>
+    <div class="sep"></div>
+    <div class="hud-stat">RENDER <span id="render-val">ACTIVE</span></div>
+    <span id="sys-time"></span>
   </div>
 
-  <!-- Canvas -->
-  <div id="main">
-    <canvas id="c"></canvas>
-    <div id="hud-title">
-      <h2 id="sim-name">Select a Simulation</h2>
-      <p id="sim-desc">Choose any simulation from the left panel.</p>
-    </div>
-    <div id="controls">
-      <h3>Simulation Controls</h3>
-      <div id="ctrl-slots"></div>
-    </div>
-    <div id="fps">-- fps</div>
-    <div id="orbit-hint">drag to orbit · scroll to zoom</div>
+  <div id="statusbar">
+    <div class="sbar-item"><div class="dot"></div> FIELD ENGINE ONLINE</div>
+    <div class="sbar-item"><div class="dot warn"></div> AI MODULE // STANDBY</div>
+    <div class="sbar-item">DRAG PANELS TO REPOSITION</div>
+    <div class="sbar-item" style="margin-left:auto">ORBIT: DRAG · ZOOM: SCROLL</div>
   </div>
+</div>
 
+<!-- Orbit indicator -->
+<div id="orbit-ring"></div>
+<div id="orbit-labels">
+  <div class="orbit-lbl">↕ PITCH</div>
+  <div class="orbit-lbl">↔ YAW</div>
+</div>
+
+<!-- ── PANEL: Simulation List ── -->
+<div class="panel" id="panel-sims">
+  <div class="panel-header" data-drag="panel-sims">
+    <div class="panel-dot"></div>
+    <div class="panel-title">Simulation Library</div>
+    <div class="panel-tag">20 SIMS</div>
+  </div>
+  <div id="sim-scroll">
+    <div class="sim-cat">Physics &amp; Waves</div>
+    <div class="sim-row" data-id="trig">   <span class="sim-num">01</span>Sin · Cos · Tan</div>
+    <div class="sim-row" data-id="fourier"><span class="sim-num">02</span>Fourier Transform</div>
+    <div class="sim-row" data-id="vortex"> <span class="sim-num">03</span>Vortex</div>
+    <div class="sim-row" data-id="physics"><span class="sim-num">04</span>N-Body Gravity</div>
+
+    <div class="sim-cat">Engineering</div>
+    <div class="sim-row" data-id="motor">  <span class="sim-num">05</span>Electric Motor</div>
+    <div class="sim-row" data-id="arc">    <span class="sim-num">06</span>Arc Reactor</div>
+    <div class="sim-row" data-id="em">     <span class="sim-num">07</span>EM Induction</div>
+    <div class="sim-row" data-id="dna">    <span class="sim-num">08</span>DNA Tesseract Wire</div>
+
+    <div class="sim-cat">Space &amp; Cosmos</div>
+    <div class="sim-row" data-id="blackhole"><span class="sim-num">09</span>Black Hole</div>
+    <div class="sim-row" data-id="star">    <span class="sim-num">10</span>Protostellar Collapse</div>
+    <div class="sim-row" data-id="solar">   <span class="sim-num">11</span>Solar System</div>
+    <div class="sim-row" data-id="lunar">   <span class="sim-num">12</span>Lunar Eclipse</div>
+    <div class="sim-row" data-id="singular"><span class="sim-num">13</span>Singularity</div>
+
+    <div class="sim-cat">Organic &amp; Art</div>
+    <div class="sim-row" data-id="bulb">     <span class="sim-num">14</span>Incandescent Bulb</div>
+    <div class="sim-row" data-id="odyssey">  <span class="sim-num">15</span>The Odyssey</div>
+    <div class="sim-row" data-id="fire">     <span class="sim-num">16</span>Combustion Field</div>
+    <div class="sim-row" data-id="butterfly"><span class="sim-num">17</span>Butterfly Attractor</div>
+    <div class="sim-row" data-id="string">   <span class="sim-num">18</span>String Theory</div>
+    <div class="sim-row" data-id="dna2">     <span class="sim-num">19</span>DNA Double Helix</div>
+    <div class="sim-row" data-id="atom">     <span class="sim-num">20</span>Electron Orbitals</div>
+  </div>
+</div>
+
+<!-- ── PANEL: Controls ── -->
+<div class="panel" id="panel-ctrl">
+  <div class="panel-header" data-drag="panel-ctrl">
+    <div class="panel-dot" style="background:var(--accent2);box-shadow:0 0 8px var(--accent2)"></div>
+    <div class="panel-title">Sim Controls</div>
+    <div class="panel-tag" id="ctrl-tag">--</div>
+  </div>
+  <div class="ctrl-body" id="ctrl-slots"></div>
+</div>
+
+<!-- ── PANEL: Info ── -->
+<div class="panel" id="panel-info">
+  <div class="panel-header" data-drag="panel-info">
+    <div class="panel-dot" style="background:var(--warn);box-shadow:0 0 8px var(--warn)"></div>
+    <div class="panel-title">Field Analysis</div>
+    <div class="panel-tag" id="info-tag">SELECT SIM</div>
+  </div>
+  <div class="info-body">
+    <div id="sim-name-big">--</div>
+    <div id="sim-desc">Select a simulation from the library panel.</div>
+  </div>
+</div>
+
+<!-- ── PANEL: AI Generator ── -->
+<div class="panel" id="panel-ai">
+  <div class="panel-header" data-drag="panel-ai">
+    <div class="panel-dot" style="background:#aa44ff;box-shadow:0 0 8px #aa44ff;animation:pulse 3s infinite"></div>
+    <div class="panel-title">AI Generator</div>
+    <div class="panel-tag">BETA</div>
+  </div>
+  <div class="ai-body">
+    <textarea id="ai-input" placeholder="Describe a field...&#10;e.g. 'neutron star collision'"></textarea>
+    <button id="ai-btn">⚡ GENERATE FIELD</button>
+    <div class="ai-badge">// API integration pending</div>
+  </div>
 </div>
 
 <script>
-// ─── Canvas setup ──────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+// CANVAS
+// ═══════════════════════════════════════════════════════════════
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
-
+let W, H;
 function resize() {
-  canvas.width = canvas.offsetWidth * devicePixelRatio;
-  canvas.height = canvas.offsetHeight * devicePixelRatio;
+  const r = canvas.parentElement.getBoundingClientRect();
+  W = canvas.width  = r.width  * devicePixelRatio;
+  H = canvas.height = r.height * devicePixelRatio;
 }
 resize();
-window.addEventListener('resize', resize);
+new ResizeObserver(resize).observe(canvas.parentElement);
 
-// ─── Orbit / zoom ──────────────────────────────────────────────────
-let rotX = 0.3, rotY = 0.4, zoom = 1;
+// ═══════════════════════════════════════════════════════════════
+// CAMERA
+// ═══════════════════════════════════════════════════════════════
+let rotX = 0.3, rotY = 0.5, zoom = 1;
 let dragging = false, lx = 0, ly = 0;
 
-canvas.addEventListener('mousedown', e => { dragging = true; lx = e.clientX; ly = e.clientY; });
+canvas.addEventListener('mousedown', e => {
+  // only drag if not on a panel
+  if (e.target === canvas) { dragging = true; lx = e.clientX; ly = e.clientY; }
+});
 window.addEventListener('mouseup', () => dragging = false);
 window.addEventListener('mousemove', e => {
   if (!dragging) return;
-  rotY += (e.clientX - lx) * 0.005;
-  rotX += (e.clientY - ly) * 0.005;
+  rotY += (e.clientX - lx) * 0.006;
+  rotX += (e.clientY - ly) * 0.006;
   lx = e.clientX; ly = e.clientY;
 });
-canvas.addEventListener('wheel', e => { zoom *= e.deltaY > 0 ? 0.93 : 1.07; zoom = Math.min(Math.max(zoom, 0.3), 4); });
+canvas.addEventListener('wheel', e => {
+  zoom *= e.deltaY > 0 ? 0.91 : 1.09;
+  zoom = Math.max(0.2, Math.min(6, zoom));
+}, { passive: true });
 
-// ─── 3D projection ─────────────────────────────────────────────────
 function project(x, y, z) {
   const cx = Math.cos(rotX), sx = Math.sin(rotX);
+  const y1 = y*cx - z*sx, z1 = y*sx + z*cx;
   const cy = Math.cos(rotY), sy = Math.sin(rotY);
-  const y1 = y * cx - z * sx, z1 = y * sx + z * cx;
-  const x2 = x * cy + z1 * sy, z2 = -x * sy + z1 * cy;
-  const fov = 600 * zoom;
-  const w = canvas.width, h = canvas.height;
-  const s = fov / (fov + z2 + 400);
-  return { sx: x2 * s + w / 2, sy: y1 * s + h / 2, z: z2, s };
+  const x2 = x*cy + z1*sy, z2 = -x*sy + z1*cy;
+  const fov = 680 * zoom;
+  const s = fov / (z2 + 480);
+  return { sx: x2*s + W/2, sy: y1*s + H/2, s, z: z2 };
 }
 
-// ─── Simulation registry ───────────────────────────────────────────
-const sims = {};
-let current = null;
-let t = 0;
-let params = {};
+// ═══════════════════════════════════════════════════════════════
+// DRAW PRIMITIVES — additive compositing
+// ═══════════════════════════════════════════════════════════════
+function dot(x, y, z, r, col) {
+  const p = project(x, y, z);
+  if (p.sx < -30 || p.sx > W+30 || p.sy < -30 || p.sy > H+30) return;
+  const sr = Math.max(0.3, r * p.s);
+  ctx.fillStyle = col;
+  ctx.beginPath(); ctx.arc(p.sx, p.sy, sr, 0, 6.2832); ctx.fill();
+}
 
-function registerSim(id, def) { sims[id] = def; }
+function glowDot(x, y, z, r, h, s, l, a) {
+  const p = project(x, y, z);
+  if (p.sx < -60 || p.sx > W+60 || p.sy < -60 || p.sy > H+60) return;
+  const sr = Math.max(0.3, r * p.s);
+  // outer halo
+  const g1 = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, sr*6);
+  g1.addColorStop(0, `hsla(${h},${s}%,${l}%,${a*0.15})`);
+  g1.addColorStop(1, 'transparent');
+  ctx.fillStyle = g1;
+  ctx.beginPath(); ctx.arc(p.sx, p.sy, sr*6, 0, 6.2832); ctx.fill();
+  // mid
+  const g2 = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, sr*2.5);
+  g2.addColorStop(0, `hsla(${h},${s}%,${Math.min(100,l+15)}%,${a*0.5})`);
+  g2.addColorStop(1, 'transparent');
+  ctx.fillStyle = g2;
+  ctx.beginPath(); ctx.arc(p.sx, p.sy, sr*2.5, 0, 6.2832); ctx.fill();
+  // core
+  ctx.fillStyle = `hsla(${h},${s}%,${Math.min(100,l+30)}%,${a})`;
+  ctx.beginPath(); ctx.arc(p.sx, p.sy, sr, 0, 6.2832); ctx.fill();
+}
 
-// ─── Controls builder ──────────────────────────────────────────────
+function label(x, y, z, text, ox=28, oy=-16) {
+  const p = project(x, y, z);
+  const tx = p.sx + ox, ty = p.sy + oy;
+  ctx.save();
+  ctx.globalCompositeOperation = 'source-over';
+  // leader line
+  ctx.strokeStyle = 'rgba(0,180,255,0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(p.sx, p.sy); ctx.lineTo(tx, ty); ctx.stroke();
+  ctx.setLineDash([]);
+  // box
+  ctx.font = `${9 * devicePixelRatio}px 'Orbitron', sans-serif`;
+  const tw = ctx.measureText(text).width;
+  const pad = 5 * devicePixelRatio;
+  const bx = ox > 0 ? tx : tx - tw - pad*2;
+  ctx.fillStyle = 'rgba(0,10,25,0.85)';
+  ctx.fillRect(bx - pad, ty - 10*devicePixelRatio - pad, tw + pad*2, 12*devicePixelRatio + pad*1.5);
+  ctx.strokeStyle = 'rgba(0,180,255,0.4)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(bx - pad, ty - 10*devicePixelRatio - pad, tw + pad*2, 12*devicePixelRatio + pad*1.5);
+  ctx.fillStyle = 'rgba(0,180,255,0.9)';
+  ctx.fillText(text, bx, ty);
+  ctx.restore();
+}
+
+function screenGlow(x, y, z, radius, r, g, b, intensity) {
+  const p = project(x, y, z);
+  const gr = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, radius * zoom);
+  gr.addColorStop(0, `rgba(${r},${g},${b},${intensity})`);
+  gr.addColorStop(1, 'transparent');
+  ctx.fillStyle = gr;
+  ctx.fillRect(0, 0, W, H);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SIM SYSTEM
+// ═══════════════════════════════════════════════════════════════
+const SIMS = {};
+let current = null, T = 0, params = {}, ptCount = 0;
+
+function reg(id, def) { SIMS[id] = def; }
+
 function buildControls(def) {
   const slot = document.getElementById('ctrl-slots');
   slot.innerHTML = '';
   params = {};
-  if (!def.controls) return;
-  def.controls.forEach(c => {
-    params[c.id] = c.default;
+  document.getElementById('ctrl-tag').textContent = def.tag || 'ACTIVE';
+  (def.controls || []).forEach(c => {
+    params[c.id] = c.def;
     const wrap = document.createElement('div');
+    wrap.className = 'ctrl-item';
+    const pct = ((c.def - c.min) / (c.max - c.min) * 100).toFixed(1);
     wrap.innerHTML = `
       <div class="ctrl-row">
         <span class="ctrl-label">${c.label}</span>
-        <span class="ctrl-val" id="v-${c.id}">${c.default}</span>
+        <span class="ctrl-val" id="cv-${c.id}">${c.def}</span>
       </div>
-      <input type="range" class="ctrl-slider" min="${c.min}" max="${c.max}" step="${c.step||1}" value="${c.default}" data-id="${c.id}">
-    `;
+      <div class="slider-track">
+        <div class="slider-fill" id="sf-${c.id}" style="width:${pct}%"></div>
+        <input type="range" min="${c.min}" max="${c.max}" step="${c.step||1}" value="${c.def}" data-id="${c.id}">
+      </div>`;
     slot.appendChild(wrap);
     wrap.querySelector('input').addEventListener('input', ev => {
       params[c.id] = parseFloat(ev.target.value);
-      document.getElementById('v-' + c.id).textContent = params[c.id];
+      document.getElementById('cv-' + c.id).textContent = params[c.id];
+      const pct2 = ((params[c.id] - c.min) / (c.max - c.min) * 100).toFixed(1);
+      document.getElementById('sf-' + c.id).style.width = pct2 + '%';
     });
   });
 }
 
 function switchSim(id) {
-  const def = sims[id];
-  if (!def) return;
-  current = def;
-  t = 0;
-  document.getElementById('sim-name').textContent = def.name;
+  const def = SIMS[id]; if (!def) return;
+  if (current && current.reset) current.reset();
+  current = def; T = 0;
+  if (def.reset) def.reset();
+  document.getElementById('sim-name-big').textContent = def.name;
   document.getElementById('sim-desc').textContent = def.desc;
+  document.getElementById('info-tag').textContent = def.tag || id.toUpperCase();
+  document.getElementById('mode-val').textContent = def.tag || id.toUpperCase();
   buildControls(def);
-  document.querySelectorAll('.sim-item').forEach(el => el.classList.toggle('active', el.dataset.sim === id));
+  document.querySelectorAll('.sim-row').forEach(el => el.classList.toggle('active', el.dataset.id === id));
 }
 
-document.querySelectorAll('.sim-item').forEach(el => el.addEventListener('click', () => switchSim(el.dataset.sim)));
+document.querySelectorAll('.sim-row').forEach(el => el.addEventListener('click', () => switchSim(el.dataset.id)));
 
-// ─── Helpers ───────────────────────────────────────────────────────
-function hsl(h, s, l, a=1) { return `hsla(${h},${s}%,${l}%,${a})`; }
-function dot(x, y, z, r, col) {
-  const p = project(x, y, z);
-  const rs = r * p.s;
-  if (rs < 0.3) return;
-  ctx.beginPath();
-  ctx.arc(p.sx, p.sy, rs, 0, Math.PI*2);
-  ctx.fillStyle = col;
-  ctx.fill();
-}
+// ═══════════════════════════════════════════════════════════════
+// DRAGGABLE PANELS
+// ═══════════════════════════════════════════════════════════════
+document.querySelectorAll('[data-drag]').forEach(header => {
+  const panel = document.getElementById(header.dataset.drag);
+  let dx = 0, dy = 0, mx = 0, my = 0, draggingPanel = false;
 
-// ═══════════════════════════════════════════════════════════════════
+  header.addEventListener('mousedown', e => {
+    e.preventDefault();
+    draggingPanel = true;
+    const rect = panel.getBoundingClientRect();
+    dx = e.clientX - rect.left;
+    dy = e.clientY - rect.top;
+    panel.style.zIndex = 50;
+  });
+
+  window.addEventListener('mousemove', e => {
+    if (!draggingPanel) return;
+    const nx = e.clientX - dx;
+    const ny = e.clientY - dy;
+    panel.style.left = Math.max(0, Math.min(window.innerWidth - panel.offsetWidth, nx)) + 'px';
+    panel.style.top  = Math.max(0, Math.min(window.innerHeight - panel.offsetHeight, ny)) + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.transform = 'none';
+  });
+
+  window.addEventListener('mouseup', () => { draggingPanel = false; panel.style.zIndex = 10; });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // SIMULATIONS
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 
-// 1. TRIG WAVES ─────────────────────────────────────────────────────
-registerSim('trig', {
-  name: 'Sin / Cos / Tan Waves', desc: 'Three trig functions rendered as 3D particle ribbons.',
+// ── VORTEX ──────────────────────────────────────────────────────
+reg('vortex', {
+  name: 'VORTEX', tag: 'PLASMA-07',
+  desc: 'High-density rotating particle disk collapsing toward a central singularity. Particle heat encoded by orbital radius.',
   controls: [
-    { id: 'freq', label: 'Frequency', min: 0.5, max: 5, step: 0.1, default: 1.5 },
-    { id: 'amp',  label: 'Amplitude', min: 20, max: 150, step: 1, default: 80 },
-    { id: 'tspd', label: 'Time Speed', min: 0, max: 3, step: 0.1, default: 1 },
+    { id: 'N',     label: 'Particle Count', min: 2000, max: 15000, step: 500, def: 9000 },
+    { id: 'spd',   label: 'Spin Speed',     min: 0.2,  max: 8,    step: 0.1, def: 2.2 },
+    { id: 'rad',   label: 'Field Radius',   min: 80,   max: 400,  step: 5,   def: 260 },
+    { id: 'tight', label: 'Radial Bias',    min: 0.1,  max: 1,    step: 0.05,def: 0.45 },
   ],
+  pts: [], reset() { this.pts = []; },
   draw() {
-    const N = 200, W = 300;
-    for (let i = 0; i < N; i++) {
-      const u = (i / N - 0.5) * W * 2;
-      const phase = u * 0.05 * params.freq + t * params.tspd;
-      // Sine
-      dot(u, Math.sin(phase) * params.amp, -80, 2.5, hsl(160, 100, 60, 0.9));
-      // Cosine
-      dot(u, Math.cos(phase) * params.amp, 0, 2.5, hsl(210, 100, 65, 0.9));
-      // Tan (clamped)
-      const tv = Math.tan(phase) * params.amp * 0.3;
-      if (Math.abs(tv) < params.amp * 1.5)
-        dot(u, tv, 80, 2.5, hsl(45, 100, 65, 0.9));
+    const N = Math.floor(params.N), R = params.rad;
+    while (this.pts.length < N) {
+      const f = Math.random();
+      this.pts.push({ r: R * Math.pow(f, params.tight), a: Math.random()*6.2832, y: (Math.random()-0.5)*18, spd: 0.5+Math.random()*0.8, f });
     }
-  }
-});
+    if (this.pts.length > N) this.pts.length = N;
+    ptCount = this.pts.length;
 
-// 2. FOURIER ────────────────────────────────────────────────────────
-registerSim('fourier', {
-  name: 'Fourier Series Decomposition', desc: 'Square wave built from nested rotating phasors.',
-  controls: [
-    { id: 'harmonics', label: 'Harmonics', min: 1, max: 15, step: 1, default: 5 },
-    { id: 'radius', label: 'Radius', min: 30, max: 120, step: 1, default: 70 },
-    { id: 'fspd', label: 'Speed', min: 0.1, max: 3, step: 0.1, default: 0.8 },
-  ],
-  trail: [],
-  draw() {
-    const H = Math.floor(params.harmonics);
-    const R = params.radius;
-    let x = -200, y = 0;
-    for (let k = 0; k < H; k++) {
-      const n = 2 * k + 1;
-      const r = R * (4 / (Math.PI * n));
-      const angle = n * t * params.fspd;
-      const nx = x + Math.cos(angle) * r;
-      const ny = y + Math.sin(angle) * r;
-      // Draw arm
-      for (let j = 0; j <= 12; j++) {
-        const f = j / 12;
-        dot(x + (nx - x) * f, y + (ny - y) * f, 0, 1, hsl(160 + k * 15, 80, 60, 0.5));
-      }
-      // Circle outline
-      for (let a = 0; a < 60; a++) {
-        const ca = (a / 60) * Math.PI * 2;
-        dot(x + Math.cos(ca) * r, y + Math.sin(ca) * r, 0, 0.8, hsl(160, 50, 50, 0.2));
-      }
-      x = nx; y = ny;
-    }
-    // Tip dot
-    dot(x, y, 0, 4, hsl(45, 100, 70, 1));
-    // Trail (time domain)
-    this.trail.push({ x, y });
-    if (this.trail.length > 300) this.trail.shift();
-    for (let i = 0; i < this.trail.length; i++) {
-      const pt = this.trail[i];
-      const tx = 50 + i * 1.2;
-      dot(tx, pt.y, 0, 1.5, hsl(45, 100, 65, i / this.trail.length));
-    }
-    // Connecting line
-    if (this.trail.length > 0) {
-      const latest = this.trail[this.trail.length - 1];
-      for (let j = 0; j <= 15; j++) {
-        const f = j / 15;
-        dot(x + (50 - x) * f, latest.y, 0, 0.8, hsl(0, 0, 80, 0.3));
-      }
-    }
-  }
-});
-
-// 3. VORTEX ─────────────────────────────────────────────────────────
-registerSim('vortex', {
-  name: 'Vortex', desc: 'Rotating disk of charged particles collapsing into a singularity.',
-  controls: [
-    { id: 'vcnt', label: 'Particles', min: 200, max: 2000, step: 50, default: 800 },
-    { id: 'vspd', label: 'Spin Speed', min: 0.2, max: 5, step: 0.1, default: 1.5 },
-    { id: 'vrad', label: 'Radius', min: 50, max: 300, step: 5, default: 200 },
-  ],
-  draw() {
-    const N = params.vcnt, R = params.vrad;
-    for (let i = 0; i < N; i++) {
-      const f = i / N;
-      const r = R * Math.pow(f, 0.6);
-      const angle = f * Math.PI * 20 + t * params.vspd * (1 - f * 0.7);
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = (f - 0.5) * 20;
-      const heat = f;
-      dot(x, y, z, 1.5, hsl(heat < 0.5 ? 0 : 20, 100, 40 + heat * 40, 0.7));
-    }
-  }
-});
-
-// 4. PHYSICS ────────────────────────────────────────────────────────
-registerSim('physics', {
-  name: 'Physics — Gravity Field', desc: 'Particles orbiting a central gravity well.',
-  controls: [
-    { id: 'pcnt', label: 'Particles', min: 100, max: 2000, step: 50, default: 600 },
-    { id: 'grav', label: 'Gravity', min: 0.1, max: 3, step: 0.1, default: 1 },
-  ],
-  pts: null,
-  draw() {
-    if (!this.pts || this.pts.length !== Math.floor(params.pcnt)) {
-      this.pts = Array.from({ length: Math.floor(params.pcnt) }, () => {
-        const r = 80 + Math.random() * 180;
-        const a = Math.random() * Math.PI * 2;
-        const b = (Math.random() - 0.5) * 0.4;
-        return { r, a, b, spd: 0.3 + Math.random() * 0.5, col: Math.random() };
-      });
-    }
+    ctx.globalCompositeOperation = 'lighter';
     this.pts.forEach(p => {
-      p.a += (p.spd / p.r) * params.grav * 20;
-      const x = Math.cos(p.a) * p.r * Math.cos(p.b);
-      const z = Math.sin(p.a) * p.r * Math.cos(p.b);
-      const y = p.r * Math.sin(p.b);
-      dot(x, y, z, 1.5, hsl(200 + p.col * 160, 80, 60, 0.8));
+      p.a += (p.spd / Math.max(p.r, 1)) * params.spd * 14;
+      const x = Math.cos(p.a)*p.r, z = Math.sin(p.a)*p.r;
+      const heat = 1 - p.f;
+      const h = heat < 0.35 ? 0 : heat < 0.65 ? 22 : 48;
+      const l = 28 + heat * 55;
+      dot(x, p.y, z, 1.7, `hsla(${h},100%,${l}%,${0.35+heat*0.55})`);
     });
-    // central attractor
-    for (let i = 0; i < 8; i++) dot(0, 0, 0, 5 + i, hsl(180, 100, 70, 0.1));
+
+    // core furnace glow
+    screenGlow(0,0,0, 80, 255,120,30, 0.07);
+    screenGlow(0,0,0, 40, 255,180,80, 0.09);
+    ctx.globalCompositeOperation = 'source-over';
+
+    label(0, 0, 0, 'SINGULARITY', 42, -28);
+    label(params.rad*0.58, 0, 0, 'ACCRETION BAND', 28, -18);
   }
 });
 
-// 5. ELECTRIC MOTOR ─────────────────────────────────────────────────
-registerSim('motor', {
-  name: 'Brushless Motor Architecture', desc: 'Orange: stator windings. Blue: rotor magnets. Cyan: magnetic flux.',
+// ── INCANDESCENT BULB ───────────────────────────────────────────
+reg('bulb', {
+  name: 'INCANDESCENT SWARM', tag: 'DRONE-14',
+  desc: 'Drone swarm forming a light bulb geometry. Dynamic tungsten coil filament with helical thread simulation and heat glow.',
   controls: [
-    { id: 'mspd', label: 'Motor Speed', min: 0, max: 10, step: 0.1, default: 3 },
-    { id: 'srad', label: 'Stator Radius', min: 20, max: 80, step: 1, default: 50 },
-    { id: 'flux', label: 'Flux Intensity', min: 0.5, max: 3, step: 0.1, default: 1.5 },
+    { id: 'bsc',   label: 'Bulb Scale',    min: 3,    max: 12,   step: 0.5, def: 7 },
+    { id: 'power', label: 'Power Level',   min: 0,    max: 1,    step: 0.01,def: 0.92 },
+    { id: 'fglow', label: 'Filament Glow', min: 0,    max: 1,    step: 0.01,def: 0.88 },
+    { id: 'bN',    label: 'Swarm Density', min: 3000, max: 14000,step: 500, def: 9000 },
   ],
   draw() {
-    const SR = params.srad, N = 6;
-    // Stator coils
-    for (let k = 0; k < N; k++) {
-      const ang = (k / N) * Math.PI * 2;
-      const cx = Math.cos(ang) * SR, cz = Math.sin(ang) * SR;
-      for (let i = 0; i < 60; i++) {
-        const u = (i / 60 - 0.5) * 120;
-        const wobble = Math.sin(i * 0.3 + t) * 8;
-        dot(cx + wobble * 0.2, u, cz + wobble * 0.2, 2, hsl(35, 100, 60, 0.85));
-      }
+    const R = params.bsc*18, glow = params.fglow, pwr = params.power, N = Math.floor(params.bN);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Glass shell
+    const shellN = Math.floor(N * 0.55);
+    for (let i = 0; i < shellN; i++) {
+      const lat = Math.random(), lon = Math.random();
+      const a = lat < 0.65 ? lat/0.65*Math.PI*0.82 : 0.82*Math.PI+(lat-0.65)/0.35*Math.PI*0.18;
+      const b = lon * 6.2832;
+      const rr = lat > 0.65 ? R*(1-(lat-0.65)*1.5) : R;
+      if (rr < 2) continue;
+      dot(Math.sin(a)*Math.cos(b)*rr, Math.cos(a)*rr+R*0.14, Math.sin(a)*Math.sin(b)*rr,
+        1.1, `hsla(140,65%,55%,${0.09+Math.random()*0.07})`);
     }
-    // Rotor (magnets)
-    const rotOff = t * params.mspd;
-    for (let k = 0; k < 4; k++) {
-      const ang = (k / 4) * Math.PI * 2 + rotOff;
-      const rx = Math.cos(ang) * (SR * 0.5), rz = Math.sin(ang) * (SR * 0.5);
-      for (let i = 0; i < 40; i++) {
-        const u = (i / 40 - 0.5) * 100;
-        dot(rx, u, rz, 2.5, hsl(210, 100, 65, 0.9));
-      }
+
+    // Tungsten filament coil
+    const filN = Math.floor(N * 0.18);
+    for (let i = 0; i < filN; i++) {
+      const ft = i/filN;
+      const coilA = ft * Math.PI * 10;
+      const coilR = 6 + Math.sin(ft*Math.PI)*4;
+      const fy = ft*70 - 16;
+      const flicker = 1 + Math.sin(T*14+ft*9)*0.03*glow;
+      const heat = 0.6 + ft*0.3 + pwr*0.08;
+      dot(Math.cos(coilA)*coilR*flicker, fy, Math.sin(coilA)*coilR*flicker,
+        2*glow, `hsla(${42+heat*8},100%,${48+heat*36}%,${0.7+glow*0.25})`);
     }
-    // Flux lines
-    for (let f = 0; f < 80; f++) {
-      const a = (f / 80) * Math.PI * 2 + rotOff * params.flux;
-      const r = SR * 0.8 + Math.sin(f * 0.4 + t) * 10;
-      dot(Math.cos(a) * r, Math.sin(f * 0.5) * 30, Math.sin(a) * r, 1.5, hsl(180, 100, 70, 0.5));
+
+    // Filament screen glow
+    screenGlow(0, 25, 0, 80, 255,200,80, 0.08*glow*pwr);
+    screenGlow(0, 25, 0, 35, 255,220,120, 0.12*glow*pwr);
+
+    // Neck
+    const baseN = Math.floor(N*0.12);
+    for (let i = 0; i < baseN; i++) {
+      const a = Math.random()*6.2832, h = -55+Math.random()*34, nr = 8+Math.random()*8;
+      dot(Math.cos(a)*nr, h, Math.sin(a)*nr, 1.2, `hsla(0,0%,32%,0.55)`);
     }
-    // Shaft
-    for (let i = 0; i < 40; i++) dot(0, (i - 20) * 4, 0, 2, hsl(45, 80, 60, 0.9));
+    // Pins
+    for (let pin = -1; pin <= 1; pin += 2)
+      for (let j = 0; j < 22; j++) dot(pin*4, -68-j*2, 0, 1.5, `hsla(0,0%,52%,0.75)`);
+
+    ctx.globalCompositeOperation = 'source-over';
+    label(R*0.72, R*0.28, 0, 'GLASS ENCLOSURE', 22, -14);
+    label(8, 30, 0, 'TUNGSTEN COIL', 28, -18);
+    label(0, -57, 0, 'CONDUCTIVE BASE', 32, 10);
   }
 });
 
-// 6. ARC REACTOR ────────────────────────────────────────────────────
-registerSim('arc', {
-  name: 'Arc Reactor Core', desc: 'Toroidal plasma containment with magnetic confinement rings.',
+// ── TRIG WAVES ──────────────────────────────────────────────────
+reg('trig', {
+  name: 'TRIGONOMETRIC WAVE COMPARATOR', tag: 'WAVE-03',
+  desc: 'Sine, Cosine and Tangent rendered as dense 3D particle ribbons. Visibility sliders isolate each wave function.',
   controls: [
-    { id: 'arcR', label: 'Core Radius', min: 30, max: 120, step: 1, default: 60 },
-    { id: 'rings', label: 'Containment Rings', min: 2, max: 10, step: 1, default: 6 },
-    { id: 'glow', label: 'Plasma Glow', min: 0.2, max: 3, step: 0.1, default: 1 },
+    { id: 'freq',   label: 'Frequency',      min: 0.5, max: 5,    step: 0.1, def: 1.5 },
+    { id: 'amp',    label: 'Amplitude',      min: 30,  max: 180,  step: 1,   def: 90 },
+    { id: 'tspd',   label: 'Time Speed',     min: 0,   max: 4,    step: 0.1, def: 1 },
+    { id: 'tN',     label: 'Pts Per Wave',   min: 300, max: 3000, step: 50,  def: 1400 },
+    { id: 'sinVis', label: 'Sine Vis',       min: 0,   max: 1,    step: 0.05,def: 1 },
+    { id: 'cosVis', label: 'Cosine Vis',     min: 0,   max: 1,    step: 0.05,def: 1 },
+    { id: 'tanVis', label: 'Tangent Vis',    min: 0,   max: 1,    step: 0.05,def: 0.65 },
   ],
   draw() {
-    const R = params.arcR, rings = Math.floor(params.rings);
+    const N = Math.floor(params.tN), WW = 360;
+    ptCount = N * 3;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < N; i++) {
+      const u = (i/N - 0.5) * WW * 2;
+      const phase = u * 0.055 * params.freq + T * params.tspd;
+      // Sine — cyan
+      if (params.sinVis > 0.02) {
+        const sy = Math.sin(phase)*params.amp + (Math.random()-0.5)*1.5;
+        const b = 0.28 + Math.abs(Math.cos(phase))*0.65;
+        dot(u, sy, -95, 2, `hsla(178,100%,60%,${params.sinVis*b})`);
+        if (i%5===0) dot(u, sy, -95, 5, `hsla(178,100%,75%,${params.sinVis*0.1})`);
+      }
+      // Cosine — magenta
+      if (params.cosVis > 0.02) {
+        const cy = Math.cos(phase)*params.amp + (Math.random()-0.5)*1.5;
+        const b = 0.28 + Math.abs(Math.sin(phase))*0.65;
+        dot(u, cy, 0, 2, `hsla(295,100%,68%,${params.cosVis*b})`);
+        if (i%5===0) dot(u, cy, 0, 5, `hsla(295,100%,78%,${params.cosVis*0.1})`);
+      }
+      // Tangent — amber, clamped
+      if (params.tanVis > 0.02) {
+        const tv = Math.tan(phase) * params.amp * 0.28;
+        if (Math.abs(tv) < params.amp * 1.9) {
+          dot(u, tv + (Math.random()-0.5)*1.5, 95, 2, `hsla(48,100%,62%,${params.tanVis*0.72})`);
+          if (i%5===0) dot(u, tv, 95, 5, `hsla(48,100%,76%,${params.tanVis*0.1})`);
+        }
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    label(200, Math.sin(1.5)*params.amp, -95, 'SINE WAVE', 24, -18);
+    label(200, Math.cos(1.5)*params.amp, 0,   'COSINE WAVE', 24, -18);
+    label(160, 0, 95, 'TANGENT WAVE', 24, -18);
+  }
+});
+
+// ── ARC REACTOR ─────────────────────────────────────────────────
+reg('arc', {
+  name: 'ARC REACTOR CORE', tag: 'FUSION-06',
+  desc: 'Toroidal plasma containment with magnetic confinement rings. Energy output at 100%.',
+  controls: [
+    { id: 'coreR', label: 'Core Radius',      min: 20,  max: 120,  step: 1,   def: 62 },
+    { id: 'rings', label: 'Containment Rings',min: 2,   max: 10,   step: 1,   def: 6 },
+    { id: 'eflow', label: 'Energy Flow',       min: 0,   max: 5,    step: 0.1, def: 2 },
+    { id: 'pglow', label: 'Plasma Glow',       min: 0,   max: 1,    step: 0.01,def: 0.95 },
+    { id: 'arcN',  label: 'Particle Density',  min: 1000,max: 10000,step: 250, def: 6000 },
+  ],
+  draw() {
+    const R = params.coreR, rings = Math.floor(params.rings), N = Math.floor(params.arcN);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+
     // Magnetic rings
     for (let r = 0; r < rings; r++) {
-      const rr = R * (1 + r * 0.25);
-      const tilt = r * 0.08;
-      for (let i = 0; i < 120; i++) {
-        const a = (i / 120) * Math.PI * 2;
-        const x = Math.cos(a) * rr;
-        const z = Math.sin(a) * rr;
-        const y = Math.sin(a + tilt) * rr * 0.15;
-        dot(x, y, z, 2, hsl(200, 100, 70, 0.6 + Math.sin(a + t) * 0.3));
+      const rr = R * (1 + r*0.28);
+      const tilt = (r%2===0?1:-1)*r*0.06;
+      const rN = Math.floor(N*0.06);
+      for (let i = 0; i < rN; i++) {
+        const a = (i/rN)*6.2832 + T*0.18*((r%2===0)?1:-1);
+        const pulse = 0.45 + 0.55*Math.sin(a*3 + T*params.eflow + r*0.7);
+        dot(Math.cos(a)*rr, Math.sin(a+tilt)*rr*0.13, Math.sin(a)*rr,
+          1.8, `hsla(200,100%,${58+pulse*27}%,${0.38+pulse*0.52})`);
+        if (i%6===0) dot(Math.cos(a)*rr, Math.sin(a+tilt)*rr*0.13, Math.sin(a)*rr,
+          5, `hsla(200,100%,80%,0.07)`);
       }
     }
-    // Plasma core
-    for (let i = 0; i < 200; i++) {
-      const a = (i / 200) * Math.PI * 2;
-      const noise = Math.sin(a * 7 + t * 3) * 8;
-      const cr = 18 + noise;
-      dot(Math.cos(a) * cr, Math.sin(a + t) * 12, Math.sin(a) * cr, 2.5 * params.glow, hsl(180, 100, 80, 0.9));
+
+    // Plasma torus
+    const pR = R*0.4, tR = R*0.12, pN = Math.floor(N*0.28);
+    for (let i = 0; i < pN; i++) {
+      const a = (i/pN)*6.2832 + T*params.eflow*0.9;
+      const b = ((i*7)%pN/pN)*6.2832 + T*params.eflow*2.2;
+      const e = 0.45 + 0.55*Math.sin(b*3 + T*3.5);
+      dot((pR+Math.cos(b)*tR)*Math.cos(a), Math.sin(b)*tR, (pR+Math.cos(b)*tR)*Math.sin(a),
+        2, `hsla(${172+e*32},100%,${68+e*22}%,${0.55+e*0.38})`);
     }
-    // Core glow
-    for (let i = 0; i < 5; i++) {
-      const gr = (i + 1) * 4;
-      for (let a = 0; a < 20; a++) {
-        const ang = (a / 20) * Math.PI * 2;
-        dot(Math.cos(ang) * gr, 0, Math.sin(ang) * gr, 3, hsl(180, 100, 90, 0.8 - i * 0.15));
+
+    // Core sparks
+    const cN = Math.floor(N*0.08);
+    for (let i = 0; i < cN; i++) {
+      const a = T*3.2 + i*0.64, b = i*1.38;
+      const cr = 10 + Math.sin(i*0.7+T*6)*7;
+      dot(Math.cos(a)*cr, Math.sin(b)*cr, Math.sin(a)*cr,
+        1.8, `hsla(${178+Math.sin(i)*18},100%,88%,${0.42+Math.sin(i*0.5+T)*0.45})`);
+    }
+
+    screenGlow(0,0,0, 100, 0,180,255, 0.09*params.pglow);
+    screenGlow(0,0,0, 45,  80,220,255, 0.12*params.pglow);
+    ctx.globalCompositeOperation = 'source-over';
+    label(R*1.22, 0, 0, 'MAGNETIC FIELD', 24, -20);
+    label(0, 0, 0, 'PLASMA CORE', 38, 26);
+  }
+});
+
+// ── ELECTRIC MOTOR ──────────────────────────────────────────────
+reg('motor', {
+  name: 'BRUSHLESS MOTOR ARCHITECTURE', tag: 'MECH-05',
+  desc: 'Orange: Stator Windings (Copper). Blue: Rotor (Magnets). Cyan: Magnetic Flux lines.',
+  controls: [
+    { id: 'mspd',  label: 'Motor Speed',    min: 0,    max: 14,   step: 0.2, def: 3 },
+    { id: 'srad',  label: 'Stator Radius',  min: 28,   max: 100,  step: 1,   def: 55 },
+    { id: 'fluxI', label: 'Flux Intensity', min: 0.5,  max: 3,    step: 0.1, def: 1.5 },
+    { id: 'mN',    label: 'Particle Count', min: 1000, max: 10000,step: 250, def: 6000 },
+  ],
+  draw() {
+    const SR = params.srad, N = Math.floor(params.mN), rOff = T * params.mspd;
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+
+    // Stator coils x6
+    const stN = 6, stPts = Math.floor(N*0.35/stN);
+    for (let k = 0; k < stN; k++) {
+      const ang = (k/stN)*6.2832;
+      const cx = Math.cos(ang)*SR, cz = Math.sin(ang)*SR;
+      for (let i = 0; i < stPts; i++) {
+        const u = (i/stPts - 0.5)*145;
+        const w = Math.sin(i*0.14 + T*1.5 + k)*5.5;
+        const pulse = 0.45 + 0.55*Math.sin(T*2.2 + k*1.1);
+        dot(cx + Math.cos(ang+1.57)*w, u, cz + Math.sin(ang+1.57)*w,
+          1.9, `hsla(34,100%,${52+pulse*22}%,${0.58+pulse*0.32})`);
+        if (i%7===0) dot(cx, u, cz, 5, `hsla(34,100%,68%,0.06)`);
       }
+    }
+
+    // Rotor x4
+    const poles = 4, rotPts = Math.floor(N*0.2/poles);
+    for (let k = 0; k < poles; k++) {
+      const ang = (k/poles)*6.2832 + rOff;
+      const rx = Math.cos(ang)*SR*0.47, rz = Math.sin(ang)*SR*0.47;
+      for (let i = 0; i < rotPts; i++) {
+        const u = (i/rotPts - 0.5)*115;
+        dot(rx, u, rz, 2.3, `hsla(215,100%,${58+i/rotPts*22}%,0.88)`);
+        if (i%6===0) dot(rx, u, rz, 5.5, `hsla(215,100%,75%,0.08)`);
+      }
+    }
+
+    // Flux arcs
+    const fluxN = Math.floor(N*0.28);
+    for (let i = 0; i < fluxN; i++) {
+      const a = (i/fluxN)*6.2832 + rOff*params.fluxI;
+      const fr = SR*(0.72 + 0.28*Math.sin(i*0.09+T));
+      const fy = Math.sin((i/fluxN)*Math.PI*6 + T)*38;
+      dot(Math.cos(a)*fr, fy, Math.sin(a)*fr,
+        1.6, `hsla(185,100%,64%,${0.22+Math.abs(Math.sin(i*0.1+T))*0.42})`);
+    }
+
+    // Shaft
+    for (let i = 0; i < 50; i++) dot(0, (i-25)*3.5, 0, 3.2, `hsla(45,80%,65%,0.9)`);
+    screenGlow(0,0,0, 30, 255,180,50, 0.05);
+
+    ctx.globalCompositeOperation = 'source-over';
+    label(Math.cos(0)*SR, 0, Math.sin(0)*SR, 'STATOR COILS', 24, -18);
+    label(Math.cos(rOff)*SR*0.47, 0, Math.sin(rOff)*SR*0.47, 'ROTOR SHAFT', 32, 22);
+    label(Math.cos(rOff+1)*SR*0.8, 38, Math.sin(rOff+1)*SR*0.8, 'FLUX FIELD', 24, -18);
+  }
+});
+
+// ── FOURIER TRANSFORM ────────────────────────────────────────────
+reg('fourier', {
+  name: 'FOURIER SERIES DECOMPOSITION', tag: 'MATH-02',
+  desc: 'Square wave from pure sines. f(t) = (4/π) × Σ[sin(nωt)/n] — harmonics: n = 1, 3, 5...',
+  controls: [
+    { id: 'harm',  label: 'Harmonics',    min: 1,   max: 15,  step: 1,    def: 5 },
+    { id: 'frad',  label: 'Phasor Radius',min: 30,  max: 130, step: 1,    def: 82 },
+    { id: 'fspd',  label: 'Speed',        min: 0.1, max: 3,   step: 0.05, def: 0.7 },
+    { id: 'fdens', label: 'Trail Length', min: 100, max: 900, step: 25,   def: 380 },
+  ],
+  trail: [], reset() { this.trail = []; },
+  draw() {
+    const H2 = Math.floor(params.harm), R = params.frad;
+    ptCount = H2*60 + this.trail.length;
+    ctx.globalCompositeOperation = 'lighter';
+
+    let px = -220, py = 0;
+    for (let k = 0; k < H2; k++) {
+      const n = 2*k+1;
+      const r = R*(4/(Math.PI*n));
+      const angle = n*T*params.fspd;
+      const nx = px + Math.cos(angle)*r, ny = py + Math.sin(angle)*r;
+      // orbit
+      for (let i = 0; i < 64; i++) {
+        const ca = (i/64)*6.2832;
+        dot(px+Math.cos(ca)*r, py+Math.sin(ca)*r, 0, 0.9, `hsla(${162+k*18},70%,55%,0.16)`);
+      }
+      // arm
+      for (let j = 0; j <= 22; j++) {
+        const f = j/22;
+        dot(px+(nx-px)*f, py+(ny-py)*f, 0, 1.5, `hsla(${162+k*18},90%,${58+f*18}%,${0.38+f*0.48})`);
+      }
+      px = nx; py = ny;
+    }
+
+    // tip glow
+    screenGlow(px, py, 0, 40, 60,255,160, 0.25);
+    glowDot(px, py, 0, 3.5, 155, 100, 72, 1);
+
+    // time domain trail
+    this.trail.push({ x: px, y: py });
+    if (this.trail.length > Math.floor(params.fdens)) this.trail.shift();
+
+    for (let i = 0; i < this.trail.length; i++) {
+      const pt = this.trail[i], f = i/this.trail.length;
+      const tx = 80 + i*1.45;
+      dot(tx, pt.y, 0, 1.8, `hsla(46,100%,64%,${f})`);
+      if (i%9===0) dot(tx, pt.y, 0, 4.5, `hsla(46,100%,72%,${f*0.14})`);
+    }
+
+    // connector
+    if (this.trail.length > 0) {
+      const lp = this.trail[this.trail.length-1];
+      const trailX = 80 + this.trail.length*1.45;
+      for (let j = 0; j <= 18; j++) {
+        const f = j/18;
+        dot(px+(trailX-px)*f, lp.y, 0, 0.9, `hsla(0,0%,70%,0.12)`);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    label(-220, 0, 0, 'PHASOR SUMMATION', 24, -26);
+    if (this.trail.length > 60) {
+      const mid = this.trail[Math.floor(this.trail.length/2)];
+      label(80+this.trail.length*0.72, mid.y, 0, 'TIME DOMAIN OUTPUT', 22, -18);
     }
   }
 });
 
-// 7. DNA TESSERACT ──────────────────────────────────────────────────
-registerSim('dna', {
-  name: 'DNA Tesseract Nanowire', desc: 'Nested DNA cubic frameworks assembled into a conductive wire.',
+// ── BLACK HOLE ───────────────────────────────────────────────────
+reg('blackhole', {
+  name: 'BLACK HOLE — ACCRETION DISK', tag: 'COSM-09',
+  desc: 'Relativistic particle orbits bending around a Schwarzschild singularity with polar relativistic jets.',
   controls: [
-    { id: 'outerS', label: 'Outer Size', min: 20, max: 80, step: 1, default: 40 },
-    { id: 'innerR', label: 'Inner Ratio', min: 0.2, max: 0.8, step: 0.05, default: 0.5 },
-    { id: 'wspc',  label: 'Wire Spacing', min: 5, max: 30, step: 1, default: 12 },
+    { id: 'bhmass', label: 'Black Hole Mass', min: 0.5, max: 5,    step: 0.1, def: 2 },
+    { id: 'bhN',    label: 'Particle Count',  min: 2000,max: 14000,step: 200, def: 9000 },
+    { id: 'jetI',   label: 'Jet Power',       min: 0,   max: 3,    step: 0.1, def: 1.5 },
   ],
   draw() {
-    const S = params.outerS, IR = params.innerR, W = params.wspc;
-    const cubeEdges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
-    const cubeVerts = (s) => {
-      const h = s / 2;
-      return [[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]];
-    };
-    for (let seg = -5; seg <= 5; seg++) {
-      const ox = seg * W * 2;
-      const rot = t * 0.5 + seg * 0.3;
-      // Outer cube
-      const ov = cubeVerts(S);
-      cubeEdges.forEach(([a, b]) => {
-        for (let j = 0; j <= 12; j++) {
-          const f = j / 12;
-          const x = ov[a][0] + (ov[b][0] - ov[a][0]) * f;
-          const y = ov[a][1] + (ov[b][1] - ov[a][1]) * f;
-          const z = ov[a][2] + (ov[b][2] - ov[a][2]) * f;
-          const rx = x * Math.cos(rot) - z * Math.sin(rot);
-          const rz = x * Math.sin(rot) + z * Math.cos(rot);
-          dot(ox + rx, y, rz, 1.5, hsl(120, 100, 55, 0.85));
-        }
-      });
-      // Inner cube
-      const iv = cubeVerts(S * IR);
-      cubeEdges.forEach(([a, b]) => {
-        for (let j = 0; j <= 8; j++) {
-          const f = j / 8;
-          const x = iv[a][0] + (iv[b][0] - iv[a][0]) * f;
-          const y = iv[a][1] + (iv[b][1] - iv[a][1]) * f;
-          const z = iv[a][2] + (iv[b][2] - iv[a][2]) * f;
-          const rx = x * Math.cos(-rot) - z * Math.sin(-rot);
-          const rz = x * Math.sin(-rot) + z * Math.cos(-rot);
-          dot(ox + rx, y, rz, 1.2, hsl(30, 100, 60, 0.7));
-        }
-      });
-    }
-    // Electron cloud line
-    for (let i = 0; i < 60; i++) {
-      const ex = (i / 60 - 0.5) * W * 22;
-      const ey = Math.sin(i * 0.4 + t * 3) * 8;
-      dot(ex, ey, 0, 1.2, hsl(200, 100, 70, 0.5));
-    }
-  }
-});
+    const M = params.bhmass, N = Math.floor(params.bhN);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
 
-// 8. EM INDUCTION ───────────────────────────────────────────────────
-registerSim('em', {
-  name: 'Electromagnetic Induction', desc: 'Faraday\'s law: changing magnetic flux induces circular electric fields.',
-  controls: [
-    { id: 'emspd', label: 'Field Speed', min: 0.1, max: 5, step: 0.1, default: 1.5 },
-    { id: 'emR',   label: 'Coil Radius', min: 30, max: 120, step: 5, default: 80 },
-    { id: 'emN',   label: 'Loops', min: 2, max: 10, step: 1, default: 5 },
-  ],
-  draw() {
-    const N = Math.floor(params.emN), R = params.emR;
-    for (let k = 0; k < N; k++) {
-      const oz = (k - N / 2) * 30;
-      const phase = t * params.emspd + k * 0.5;
-      // Coil ring
-      for (let i = 0; i < 80; i++) {
-        const a = (i / 80) * Math.PI * 2;
-        dot(Math.cos(a) * R, Math.sin(a + phase) * 20, oz + Math.sin(a) * R * 0.15, 2, hsl(35, 100, 60, 0.8));
-      }
-      // Induced E field ring
-      const eR = R * 1.3;
-      for (let i = 0; i < 60; i++) {
-        const a = (i / 60) * Math.PI * 2 + t * params.emspd * 0.7;
-        dot(Math.cos(a) * eR, 0, oz + Math.sin(a) * eR * 0.2, 1.5, hsl(200, 100, 70, 0.5));
-      }
-    }
-    // B field lines
-    for (let i = 0; i < 30; i++) {
-      const bx = (Math.random() - 0.5) * 20;
-      dot(bx, (i - 15) * 10, 0, 1, hsl(140, 80, 60, 0.4));
-    }
-  }
-});
-
-// 9. ODYSSEY ────────────────────────────────────────────────────────
-registerSim('odyssey', {
-  name: 'The Odyssey', desc: 'Odysseus\' ship navigating the wine-dark sea.',
-  controls: [
-    { id: 'shipSc', label: 'Ship Scale', min: 5, max: 40, step: 1, default: 20 },
-    { id: 'wave',   label: 'Sea Wave Speed', min: 0, max: 5, step: 0.1, default: 1.5 },
-    { id: 'wind',   label: 'Wind Force', min: 0, max: 20, step: 0.5, default: 8 },
-  ],
-  draw() {
-    const SC = params.shipSc;
-    // Sea
-    for (let i = -60; i <= 60; i++) {
-      for (let j = -60; j <= 60; j++) {
-        const wv = Math.sin(i * 0.2 + t * params.wave) * 8 + Math.cos(j * 0.15 + t * params.wave * 0.7) * 6;
-        const d = Math.sqrt(i * i + j * j);
-        if (d > 65) continue;
-        dot(i * 5, wv - 60, j * 5, 1, hsl(220, 60, 30 + wv * 1.5, 0.6));
-      }
-    }
-    // Hull
-    for (let u = -1; u <= 1; u += 0.05) {
-      const hx = u * SC;
-      const hy = (u * u * 0.6 - 0.3) * SC - 30;
-      const hw = (1 - u * u) * SC * 0.5;
-      dot(hx, hy, hw, 2.5, hsl(40, 60, 50, 0.9));
-      dot(hx, hy, -hw, 2.5, hsl(40, 60, 50, 0.9));
-    }
-    // Mast
-    for (let y = -40; y <= 20; y += 3) dot(0, y - 20, 0, 2, hsl(40, 40, 40, 0.9));
-    // Sail
-    for (let sx = -SC * 0.8; sx <= SC * 0.8; sx += 4) {
-      const windBow = Math.sin(t * 0.5) * params.wind;
-      for (let sy = -40; sy <= 10; sy += 4) {
-        const bow = Math.sin((sx / SC) * Math.PI) * (5 + windBow);
-        dot(sx * 0.5, sy, bow, 1.5, hsl(0, 0, 85, 0.7));
-      }
-    }
-  }
-});
-
-// 10. BULB ──────────────────────────────────────────────────────────
-registerSim('bulb', {
-  name: 'Incandescent Swarm', desc: 'Drone formation simulating a realistic light bulb with dynamic glowing filament.',
-  controls: [
-    { id: 'bsc',    label: 'Bulb Scale', min: 2, max: 10, step: 0.5, default: 5 },
-    { id: 'power',  label: 'Power Level', min: 0, max: 1, step: 0.05, default: 0.9 },
-    { id: 'fglow',  label: 'Filament Glow', min: 0, max: 1, step: 0.05, default: 0.85 },
-  ],
-  draw() {
-    const R = params.bsc * 20, glow = params.fglow, pwr = params.power;
-    // Glass shell
-    for (let lat = 0; lat < 40; lat++) {
-      const a = (lat / 40) * Math.PI;
-      for (let lon = 0; lon < 60; lon++) {
-        const b = (lon / 60) * Math.PI * 2;
-        const r = lat < 25 ? R : R * (1 - (lat - 25) * 0.03);
-        dot(
-          Math.sin(a) * Math.cos(b) * r,
-          Math.cos(a) * r + 20,
-          Math.sin(a) * Math.sin(b) * r,
-          1.2, hsl(140, 60, 50, 0.25)
-        );
-      }
-    }
-    // Filament coil
-    for (let i = 0; i < 120; i++) {
-      const ft = i / 120;
-      const coilA = ft * Math.PI * 8;
-      const coilR = 8 + Math.sin(ft * Math.PI) * 5;
-      const fy = ft * 60 - 10;
-      const flicker = 1 + Math.sin(t * 10 + ft * 5) * 0.05 * glow;
-      dot(
-        Math.cos(coilA) * coilR * flicker, fy, Math.sin(coilA) * coilR * flicker,
-        3 * glow, hsl(50, 100, 70 + pwr * 20, 0.95)
-      );
-    }
-    // Neck/base
-    for (let i = 0; i < 20; i++) {
-      const a = (i / 20) * Math.PI * 2;
-      for (let h = -50; h < -20; h += 3)
-        dot(Math.cos(a) * 15, h, Math.sin(a) * 15, 1.5, hsl(0, 0, 40, 0.8));
-    }
-  }
-});
-
-// 11. BLACK HOLE ────────────────────────────────────────────────────
-registerSim('blackhole', {
-  name: 'Black Hole — Accretion Disk', desc: 'Relativistic particle orbits bending around a Schwarzschild singularity.',
-  controls: [
-    { id: 'bhmass', label: 'Mass', min: 0.5, max: 5, step: 0.1, default: 2 },
-    { id: 'bhN',    label: 'Particles', min: 200, max: 2000, step: 50, default: 800 },
-  ],
-  draw() {
-    const M = params.bhmass, N = params.bhN;
     for (let i = 0; i < N; i++) {
-      const f = i / N;
-      const r = 40 + Math.pow(f, 0.5) * 200 * M;
-      const angle = f * Math.PI * 30 + t * (1 / (r * 0.01 + 0.5));
-      const incl = Math.sin(f * 7) * 0.15;
-      const x = Math.cos(angle) * r;
-      const z = Math.sin(angle) * r;
-      const y = Math.sin(incl) * r * 0.1;
-      const heat = 1 - f;
-      dot(x, y, z, 1.5, hsl(heat * 40, 100, 30 + heat * 50, 0.8));
+      const f = i/N;
+      const r = 32 + Math.pow(f, 0.42)*240*M;
+      const angle = f*Math.PI*26 + T*(0.85/(r*0.009+0.28));
+      const incl = Math.sin(f*14)*0.16;
+      const heat = Math.pow(1-f, 1.4);
+      const h = heat > 0.6 ? 52 : heat > 0.3 ? 22 : 0;
+      dot(Math.cos(angle)*r, Math.sin(incl)*r*0.11, Math.sin(angle)*r,
+        1.4+heat*0.9, `hsla(${h},100%,${24+heat*66}%,${0.48+heat*0.46})`);
+      if (f < 0.06 && Math.random() < 0.08)
+        dot(Math.cos(angle)*r, Math.sin(incl)*r*0.11, Math.sin(angle)*r, 5.5, `hsla(50,100%,92%,0.1)`);
     }
+
     // Event horizon
-    for (let i = 0; i < 30; i++) {
-      const a = (i / 30) * Math.PI * 2;
-      dot(Math.cos(a) * 25, Math.sin(a * 2) * 5, Math.sin(a) * 25, 3, hsl(0, 0, 0, 1));
+    for (let i = 0; i < 90; i++) {
+      const a = (i/90)*6.2832;
+      dot(Math.cos(a)*20, 0, Math.sin(a)*20, 3.5, 'rgba(0,0,0,1)');
     }
-    // Jet
-    for (let j = 0; j < 80; j++) {
-      dot((Math.random() - 0.5) * 10, j * 5, (Math.random() - 0.5) * 10, 1.5, hsl(200, 100, 80, 0.4));
-      dot((Math.random() - 0.5) * 10, -j * 5, (Math.random() - 0.5) * 10, 1.5, hsl(200, 100, 80, 0.4));
+
+    // Polar jets
+    for (let i = 0; i < 150; i++) {
+      const f = i/150;
+      const jx = (Math.random()-0.5)*8*f, jz = (Math.random()-0.5)*8*f;
+      dot(jx, f*420*params.jetI, jz, 1.6, `hsla(208,100%,${68+f*20}%,${0.62*(1-f)*params.jetI})`);
+      dot(jx, -f*420*params.jetI, jz, 1.6, `hsla(208,100%,${68+f*20}%,${0.62*(1-f)*params.jetI})`);
     }
+
+    const cp = project(0,0,0);
+    const dark = ctx.createRadialGradient(cp.sx,cp.sy,0,cp.sx,cp.sy,32*zoom);
+    dark.addColorStop(0, 'rgba(0,0,0,0.98)');
+    dark.addColorStop(0.65, 'rgba(255,60,10,0.05)');
+    dark.addColorStop(1, 'transparent');
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.fillStyle = dark; ctx.fillRect(0,0,W,H);
+    ctx.globalCompositeOperation = 'lighter';
+
+    ctx.globalCompositeOperation = 'source-over';
+    label(0, 0, 0, 'EVENT HORIZON', 38, 30);
+    label(6, 180*params.jetI, 0, 'RELATIVISTIC JET', 28, -18);
   }
 });
 
-// 12. CREATION OF STAR ──────────────────────────────────────────────
-registerSim('star', {
-  name: 'Creation of a Star', desc: 'Protostellar collapse — gas cloud contracting under gravity.',
+// ── DNA TESSERACT ────────────────────────────────────────────────
+reg('dna', {
+  name: 'DNA TESSERACT NANOWIRE', tag: 'NANO-08',
+  desc: 'Nested DNA cubic frameworks (tesseracts) assembled into a conductive wire via acoustic seeding. NAR 2025.',
   controls: [
-    { id: 'stage',  label: 'Stage', min: 0, max: 1, step: 0.01, default: 0.5 },
-    { id: 'stN',    label: 'Particles', min: 200, max: 2000, step: 50, default: 800 },
+    { id: 'outerS', label: 'Outer Size',     min: 20, max: 80,  step: 1,    def: 42 },
+    { id: 'innerR', label: 'Inner Ratio',    min: 0.2,max: 0.8, step: 0.05, def: 0.5 },
+    { id: 'wspc',   label: 'Wire Spacing',   min: 6,  max: 28,  step: 1,    def: 14 },
+    { id: 'ecloud', label: 'Electron Cloud', min: 0,  max: 1,   step: 0.05, def: 0.35 },
   ],
   draw() {
-    const S = params.stage, N = params.stN;
-    for (let i = 0; i < N; i++) {
-      const f = i / N;
-      const phi = Math.acos(1 - 2 * f);
-      const theta = Math.PI * (1 + Math.sqrt(5)) * i + t * 0.1;
-      const cloudR = 250 * (1 - S * 0.85);
-      const x = Math.sin(phi) * Math.cos(theta) * cloudR;
-      const y = Math.cos(phi) * cloudR;
-      const z = Math.sin(phi) * Math.sin(theta) * cloudR;
-      const heat = S + f * 0.3;
-      dot(x, y, z, 1 + S * 2, hsl(heat * 40, 100, 30 + heat * 50, 0.7));
-    }
-    // Core glow
-    const coreR = 15 + S * 60;
-    for (let i = 0; i < 50; i++) {
-      const a = (i / 50) * Math.PI * 2;
-      dot(Math.cos(a) * coreR * (1 + S), 0, Math.sin(a) * coreR * (1 + S), 2 + S * 3, hsl(50, 100, 80, 0.9 * S));
-    }
-  }
-});
+    const S = params.outerS, IR = params.innerR, WS = params.wspc;
+    const edges = [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]];
+    const verts = s => { const h=s/2; return[[-h,-h,-h],[h,-h,-h],[h,h,-h],[-h,h,-h],[-h,-h,h],[h,-h,h],[h,h,h],[-h,h,h]]; };
+    ctx.globalCompositeOperation = 'lighter';
 
-// 13. STRING THEORY ─────────────────────────────────────────────────
-registerSim('string', {
-  name: 'String Theory', desc: 'Vibrating 1-dimensional strings in compactified extra dimensions.',
-  controls: [
-    { id: 'stmode', label: 'Vibration Mode', min: 1, max: 8, step: 1, default: 3 },
-    { id: 'stspd',  label: 'Speed', min: 0.1, max: 5, step: 0.1, default: 1 },
-    { id: 'stcnt',  label: 'Strings', min: 5, max: 40, step: 1, default: 15 },
-  ],
-  draw() {
-    const N = Math.floor(params.stcnt), M = Math.floor(params.stmode);
-    for (let s = 0; s < N; s++) {
-      const offset = (s / N - 0.5) * 200;
-      const hueShift = s / N;
-      for (let i = 0; i <= 100; i++) {
-        const u = i / 100;
-        const phase = u * Math.PI * M + t * params.stspd + s * 0.5;
-        const amp = 40 + Math.sin(s * 1.3) * 20;
-        const x = offset;
-        const y = (u - 0.5) * 200;
-        const z = Math.sin(phase) * amp;
-        dot(x, y, z, 1.5, hsl(160 + hueShift * 180, 80, 60, 0.8));
-      }
-    }
-  }
-});
+    for (let seg = -3; seg <= 3; seg++) {
+      const ox = seg*WS*2.8, rot = T*0.6+seg*0.35;
+      const rv = v => [ox + v[0]*Math.cos(rot)-v[2]*Math.sin(rot), v[1], v[0]*Math.sin(rot)+v[2]*Math.cos(rot)];
+      const ri = v => [ox + v[0]*Math.cos(-rot)-v[2]*Math.sin(-rot), v[1], v[0]*Math.sin(-rot)+v[2]*Math.cos(-rot)];
+      const ov = verts(S).map(rv), iv = verts(S*IR).map(ri);
 
-// 14. SINGULARITY ───────────────────────────────────────────────────
-registerSim('singular', {
-  name: 'Singularity', desc: 'Spacetime geometry crushing toward infinite density.',
-  controls: [
-    { id: 'sigN', label: 'Particles', min: 200, max: 2000, step: 50, default: 1000 },
-    { id: 'sigS', label: 'Collapse Speed', min: 0.1, max: 3, step: 0.1, default: 0.8 },
-  ],
-  draw() {
-    const N = params.sigN;
-    for (let i = 0; i < N; i++) {
-      const f = i / N;
-      const r = 200 * Math.pow(Math.abs(Math.sin(f * 7 + t * params.sigS * 0.1)), 2);
-      const theta = f * Math.PI * 40;
-      const phi = f * Math.PI * 13;
-      dot(
-        Math.sin(phi) * Math.cos(theta) * r,
-        Math.cos(phi) * r * 0.8,
-        Math.sin(phi) * Math.sin(theta) * r,
-        1.2 + (1 - f) * 2, hsl(280 + f * 80, 90, 50 + f * 30, 0.7)
-      );
-    }
-  }
-});
-
-// 15. BUTTERFLY ─────────────────────────────────────────────────────
-registerSim('butterfly', {
-  name: 'Butterfly Attractor', desc: 'Peter de Jong attractor traced with luminescent particles.',
-  controls: [
-    { id: 'bfN', label: 'Iterations', min: 500, max: 5000, step: 100, default: 2000 },
-    { id: 'bfa', label: 'Param A', min: -3, max: 3, step: 0.05, default: -2.24 },
-    { id: 'bfb', label: 'Param B', min: -3, max: 3, step: 0.05, default: 0.43 },
-  ],
-  draw() {
-    let x = 0.1, y = 0.1;
-    const a = params.bfa + Math.sin(t * 0.1) * 0.1;
-    const b = params.bfb;
-    const c = -2.2, d = -0.9;
-    const N = Math.floor(params.bfN);
-    for (let i = 0; i < N; i++) {
-      const nx = Math.sin(a * y) - Math.cos(b * x);
-      const ny = Math.sin(c * x) - Math.cos(d * y);
-      x = nx; y = ny;
-      dot(x * 80, y * 80, Math.sin(i * 0.01 + t) * 30, 1.5, hsl(280 + i / N * 80, 90, 65, 0.6));
-    }
-  }
-});
-
-// 16. FIRE ──────────────────────────────────────────────────────────
-registerSim('fire', {
-  name: 'Fire', desc: 'Turbulent buoyancy-driven combustion particle field.',
-  controls: [
-    { id: 'fheat', label: 'Heat', min: 0.1, max: 3, step: 0.1, default: 1.5 },
-    { id: 'fN',    label: 'Particles', min: 100, max: 1000, step: 50, default: 400 },
-  ],
-  pts: [],
-  draw() {
-    const N = Math.floor(params.fN);
-    while (this.pts.length < N) {
-      this.pts.push({ x: (Math.random() - 0.5) * 80, y: -60, z: (Math.random() - 0.5) * 40, vx: (Math.random() - 0.5) * 2, vy: -(1 + Math.random() * 3) * params.fheat, life: 1 });
-    }
-    this.pts = this.pts.slice(0, N);
-    this.pts.forEach(p => {
-      p.x += p.vx + Math.sin(t * 2 + p.y * 0.1) * 0.5;
-      p.y += p.vy;
-      p.life -= 0.015;
-      if (p.life <= 0) { p.x = (Math.random() - 0.5) * 80; p.y = -60; p.z = (Math.random() - 0.5) * 40; p.vy = -(1 + Math.random() * 3) * params.fheat; p.life = 1; }
-      const heat = p.life;
-      dot(p.x, p.y, p.z, 2 * heat, hsl(heat < 0.4 ? 0 : heat < 0.7 ? 30 : 50, 100, 40 + heat * 40, heat));
-    });
-  }
-});
-
-// 17. DNA DOUBLE HELIX ──────────────────────────────────────────────
-registerSim('dna2', {
-  name: 'DNA Double Helix', desc: 'Nucleotide base pairs connected across a rotating double helix strand.',
-  controls: [
-    { id: 'dnaN', label: 'Base Pairs', min: 10, max: 60, step: 1, default: 30 },
-    { id: 'dnaS', label: 'Spin Speed', min: 0, max: 5, step: 0.1, default: 1 },
-    { id: 'dnaR', label: 'Radius', min: 20, max: 80, step: 1, default: 40 },
-  ],
-  draw() {
-    const N = Math.floor(params.dnaN), R = params.dnaR;
-    for (let i = 0; i < N; i++) {
-      const f = i / N;
-      const a = f * Math.PI * 10 + t * params.dnaS;
-      const y = (f - 0.5) * 200;
-      const x1 = Math.cos(a) * R, z1 = Math.sin(a) * R;
-      const x2 = Math.cos(a + Math.PI) * R, z2 = Math.sin(a + Math.PI) * R;
-      // Strand 1
-      dot(x1, y, z1, 3, hsl(160, 100, 60, 0.9));
-      // Strand 2
-      dot(x2, y, z2, 3, hsl(210, 100, 60, 0.9));
-      // Base pair bridge
-      if (i % 3 === 0) {
-        for (let j = 0; j <= 8; j++) {
-          const bf = j / 8;
-          dot(x1 + (x2 - x1) * bf, y, z1 + (z2 - z1) * bf, 1.5, hsl(40, 80, 65, 0.6));
+      edges.forEach(([a,b]) => {
+        for (let j = 0; j <= 14; j++) {
+          const f = j/14;
+          const x = ov[a][0]+(ov[b][0]-ov[a][0])*f, y = ov[a][1]+(ov[b][1]-ov[a][1])*f, z = ov[a][2]+(ov[b][2]-ov[a][2])*f;
+          dot(x,y,z, 1.7, `hsla(128,100%,${48+f*22}%,0.85)`);
+          if (j%4===0) dot(x,y,z, 4.5, `hsla(128,100%,65%,0.07)`);
+        }
+      });
+      edges.forEach(([a,b]) => {
+        for (let j = 0; j <= 10; j++) {
+          const f = j/10;
+          dot(iv[a][0]+(iv[b][0]-iv[a][0])*f, iv[a][1]+(iv[b][1]-iv[a][1])*f, iv[a][2]+(iv[b][2]-iv[a][2])*f,
+            1.3, `hsla(30,100%,60%,0.75)`);
+        }
+      });
+      for (let vi = 0; vi < 8; vi++) {
+        for (let j = 0; j <= 7; j++) {
+          const f = j/7;
+          dot(ov[vi][0]+(iv[vi][0]-ov[vi][0])*f, ov[vi][1]+(iv[vi][1]-ov[vi][1])*f, ov[vi][2]+(iv[vi][2]-ov[vi][2])*f,
+            0.9, `hsla(200,100%,65%,0.3)`);
         }
       }
     }
-  }
-});
 
-// 18. ATOM RINGS ────────────────────────────────────────────────────
-registerSim('atom', {
-  name: 'Atom Rings', desc: 'Electron probability orbitals around a nucleus.',
-  controls: [
-    { id: 'shells', label: 'Shells', min: 1, max: 6, step: 1, default: 3 },
-    { id: 'aspd',   label: 'Orbital Speed', min: 0.1, max: 5, step: 0.1, default: 1.5 },
-  ],
-  draw() {
-    const SH = Math.floor(params.shells);
-    // Nucleus
-    for (let i = 0; i < 5; i++) dot(0, 0, 0, 6 - i, hsl(50, 100, 70, 0.8 - i * 0.15));
-    // Shells
-    for (let s = 1; s <= SH; s++) {
-      const r = s * 60;
-      const tilt = s * 0.4;
-      const spd = params.aspd / s;
-      for (let i = 0; i < 80; i++) {
-        const a = (i / 80) * Math.PI * 2 + t * spd;
-        dot(Math.cos(a) * r, Math.sin(a + tilt) * r * 0.3, Math.sin(a) * r, 2, hsl(200 + s * 30, 90, 65, 0.7));
-      }
-      // Electron
-      const ea = t * spd * 2;
-      dot(Math.cos(ea) * r, Math.sin(ea + tilt) * r * 0.3, Math.sin(ea) * r, 5, hsl(50, 100, 80, 1));
-    }
-  }
-});
-
-// 19. LUNAR ECLIPSE ─────────────────────────────────────────────────
-registerSim('lunar', {
-  name: 'Lunar Eclipse', desc: 'Earth\'s shadow gradient sweeping across the lunar surface.',
-  controls: [
-    { id: 'lunR', label: 'Moon Radius', min: 30, max: 100, step: 1, default: 60 },
-    { id: 'lunP', label: 'Eclipse Phase', min: 0, max: 1, step: 0.01, default: 0.5 },
-  ],
-  draw() {
-    const R = params.lunR, phase = params.lunP;
-    // Shadow offset
-    const shadowX = (phase * 2 - 1) * R * 1.5;
-    for (let lat = 0; lat < 50; lat++) {
-      const a = (lat / 50) * Math.PI;
-      for (let lon = 0; lon < 80; lon++) {
-        const b = (lon / 80) * Math.PI * 2;
-        const x = Math.sin(a) * Math.cos(b) * R;
-        const y = Math.cos(a) * R;
-        const z = Math.sin(a) * Math.sin(b) * R;
-        // Distance from shadow centre
-        const dist = Math.sqrt((x - shadowX) ** 2 + y ** 2);
-        const shadow = Math.max(0, 1 - dist / (R * 0.8));
-        dot(x, y, z, 1.5, shadow > 0.3 ? hsl(10, 80, 30, 0.9) : hsl(0, 0, 80, 0.9));
+    if (params.ecloud > 0.05) {
+      for (let i = 0; i < 130; i++) {
+        const ex = (i/130-0.5)*WS*7*2.8;
+        const ey = Math.sin(i*0.4+T*4.5)*11*params.ecloud;
+        dot(ex, ey, 0, 1.6, `hsla(200,100%,70%,${params.ecloud*0.58})`);
+        dot(ex, ey, 0, 4.5, `hsla(200,100%,75%,${params.ecloud*0.07})`);
       }
     }
+
+    ctx.globalCompositeOperation = 'source-over';
+    label(0, S*0.65, 0, 'OUTER TESSERACT', 28, -18);
+    label(0, -S*0.55, 0, 'INNER FRAMEWORK', 28, 14);
+    label(3*WS*2.8*0.7, 0, 0, 'ELECTRON CLOUD', 22, -18);
   }
 });
 
-// 20. SOLAR SYSTEM ──────────────────────────────────────────────────
-registerSim('solar', {
-  name: 'Solar System in Milky Way', desc: 'Heliocentric orbits with relative size and speed.',
+// ── REMAINING SIMS (dense versions) ─────────────────────────────
+
+reg('em', {
+  name: 'ELECTROMAGNETIC INDUCTION', tag: 'ELEC-07',
+  desc: "Faraday's law: time-varying magnetic flux induces circular electric fields in copper coil windings.",
   controls: [
-    { id: 'sspd', label: 'Time Scale', min: 0.1, max: 10, step: 0.1, default: 2 },
-    { id: 'sscl', label: 'Orbit Scale', min: 0.3, max: 2, step: 0.05, default: 0.8 },
+    { id: 'emspd', label: 'Field Speed',  min: 0.1,  max: 5,    step: 0.1, def: 1.5 },
+    { id: 'emR',   label: 'Coil Radius',  min: 30,   max: 140,  step: 5,   def: 90 },
+    { id: 'emL',   label: 'Loops',        min: 2,    max: 10,   step: 1,   def: 5 },
+    { id: 'emN',   label: 'Particles',    min: 1000, max: 8000, step: 250, def: 4500 },
+  ],
+  draw() {
+    const L = Math.floor(params.emL), R = params.emR, N = Math.floor(params.emN);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let k = 0; k < L; k++) {
+      const oz = (k-L/2)*36, phase = T*params.emspd + k*0.62;
+      const ppl = Math.floor(N/(L*2));
+      for (let i = 0; i < ppl; i++) {
+        const a = (i/ppl)*6.2832, pulse = 0.45+0.55*Math.sin(a*2+T*2.2);
+        dot(Math.cos(a)*R, oz+Math.sin(a+phase)*20, Math.sin(a)*R, 2.1,
+          `hsla(34,100%,${52+pulse*26}%,${0.52+pulse*0.38})`);
+        if (i%9===0) dot(Math.cos(a)*R, oz+Math.sin(a+phase)*20, Math.sin(a)*R, 5.5, `hsla(34,100%,68%,0.07)`);
+      }
+      for (let i = 0; i < Math.floor(ppl*0.6); i++) {
+        const a = (i/Math.floor(ppl*0.6))*6.2832 + T*params.emspd*0.5 + k, er = R*1.26;
+        dot(Math.cos(a)*er, oz, Math.sin(a)*er*0.28, 1.7, `hsla(210,100%,65%,${0.28+Math.abs(Math.sin(a+T))*0.42})`);
+      }
+    }
+    for (let i = 0; i < 70; i++) dot((Math.random()-0.5)*R*0.38, (i/70-0.5)*210, (Math.random()-0.5)*R*0.38, 1.2, `hsla(140,80%,55%,0.28)`);
+    ctx.globalCompositeOperation = 'source-over';
+    label(R, 0, 0, 'COPPER COIL', 24, -18);
+    label(R*1.3, 0, 0, 'INDUCED E-FIELD', 24, 14);
+    label(0, -88, 0, 'B-FIELD AXIS', 28, -18);
+  }
+});
+
+reg('blackhole', {
+  name: 'BLACK HOLE — ACCRETION DISK', tag: 'COSM-09',
+  desc: 'Relativistic particle orbits bending around a Schwarzschild singularity with polar relativistic jets.',
+  controls: [
+    { id: 'bhmass', label: 'Black Hole Mass', min: 0.5, max: 5,    step: 0.1, def: 2 },
+    { id: 'bhN',    label: 'Particle Count',  min: 2000,max: 14000,step: 200, def: 9000 },
+    { id: 'jetI',   label: 'Jet Power',       min: 0,   max: 3,    step: 0.1, def: 1.5 },
+  ],
+  draw() {
+    const M = params.bhmass, N = Math.floor(params.bhN);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < N; i++) {
+      const f = i/N, r = 32+Math.pow(f,0.42)*240*M;
+      const angle = f*Math.PI*26 + T*(0.85/(r*0.009+0.28));
+      const incl = Math.sin(f*14)*0.16, heat = Math.pow(1-f,1.4);
+      const h = heat>0.6?52:heat>0.3?22:0;
+      dot(Math.cos(angle)*r, Math.sin(incl)*r*0.11, Math.sin(angle)*r,
+        1.4+heat*0.9, `hsla(${h},100%,${24+heat*66}%,${0.48+heat*0.46})`);
+    }
+    for (let i=0;i<90;i++){const a=(i/90)*6.2832;dot(Math.cos(a)*20,0,Math.sin(a)*20,3.5,'rgba(0,0,0,1)');}
+    for (let i=0;i<150;i++){const f=i/150,jx=(Math.random()-0.5)*8*f,jz=(Math.random()-0.5)*8*f;
+      dot(jx,f*420*params.jetI,jz,1.6,`hsla(208,100%,${68+f*20}%,${0.62*(1-f)*params.jetI})`);
+      dot(jx,-f*420*params.jetI,jz,1.6,`hsla(208,100%,${68+f*20}%,${0.62*(1-f)*params.jetI})`);
+    }
+    const cp=project(0,0,0),dark=ctx.createRadialGradient(cp.sx,cp.sy,0,cp.sx,cp.sy,32*zoom);
+    dark.addColorStop(0,'rgba(0,0,0,0.98)');dark.addColorStop(0.65,'rgba(255,60,10,0.05)');dark.addColorStop(1,'transparent');
+    ctx.globalCompositeOperation='source-over';ctx.fillStyle=dark;ctx.fillRect(0,0,W,H);
+    label(0,0,0,'EVENT HORIZON',38,30);label(6,180*params.jetI,0,'RELATIVISTIC JET',28,-18);
+  }
+});
+
+reg('star', {
+  name: 'PROTOSTELLAR COLLAPSE', tag: 'COSM-10',
+  desc: 'Cold gas nebula contracting under self-gravity. Slide Stage to watch fusion ignition.',
+  controls: [
+    { id: 'stageS', label: 'Stage (0=cloud 1=star)', min: 0, max: 1, step: 0.005, def: 0.5 },
+    { id: 'stN2',   label: 'Particles', min: 1000, max: 14000, step: 500, def: 8000 },
+  ],
+  draw() {
+    const S = params.stageS, N = Math.floor(params.stN2);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < N; i++) {
+      const phi = Math.acos(1-2*(i/N)), theta = Math.PI*(1+Math.sqrt(5))*i + T*0.05;
+      const cR = 265*(1-S*0.88);
+      const x = Math.sin(phi)*Math.cos(theta)*cR, y = Math.cos(phi)*cR, z = Math.sin(phi)*Math.sin(theta)*cR;
+      const dist = Math.sqrt(x*x+y*y+z*z)/Math.max(cR,1);
+      const heat = S + (1-dist)*0.28;
+      const h = heat>0.7?50:heat>0.4?22:heat>0.2?2:220;
+      dot(x,y,z, 0.8+S*2.8, `hsla(${h},${heat>0.2?100:38}%,${14+heat*66}%,${0.38+heat*0.5})`);
+    }
+    if (S > 0.28) screenGlow(0,0,0, 80+S*120, 255,150+S*80,50, 0.1*S);
+    ctx.globalCompositeOperation = 'source-over';
+    if (S < 0.3) label(0,200,0,'COLD GAS NEBULA',28,-18);
+    else if (S < 0.72) label(0,0,0,'PROTOSTAR',28,30);
+    else label(0,0,0,'MAIN SEQUENCE STAR',32,30);
+  }
+});
+
+reg('solar', {
+  name: 'SOLAR SYSTEM IN MILKY WAY', tag: 'COSM-11',
+  desc: 'Heliocentric model — relative orbital speeds and realistic color. Saturn rings included.',
+  controls: [
+    { id: 'sspd',  label: 'Time Scale',  min: 0.1, max: 10, step: 0.1, def: 2 },
+    { id: 'sscl',  label: 'Orbit Scale', min: 0.3, max: 2,  step: 0.05,def: 0.9 },
+    { id: 'starN', label: 'Star Field',  min: 0,   max: 2000,step: 50, def: 700 },
   ],
   planets: [
-    { name: 'Mercury', r: 30, speed: 4.15, size: 2, h: 30 },
-    { name: 'Venus',   r: 55, speed: 1.62, size: 3, h: 50 },
-    { name: 'Earth',   r: 80, speed: 1,    size: 3.5, h: 210 },
-    { name: 'Mars',    r: 105, speed: 0.53, size: 2.5, h: 10 },
-    { name: 'Jupiter', r: 160, speed: 0.084, size: 7, h: 40 },
-    { name: 'Saturn',  r: 210, speed: 0.034, size: 6, h: 45 },
-    { name: 'Uranus',  r: 250, speed: 0.012, size: 4.5, h: 180 },
-    { name: 'Neptune', r: 285, speed: 0.006, size: 4, h: 220 },
+    {n:'Mercury',r:28, spd:4.15, sz:2.5, h:30, s:40,l:65},
+    {n:'Venus',  r:50, spd:1.62, sz:3.5, h:50, s:80,l:70},
+    {n:'Earth',  r:75, spd:1,    sz:3.5, h:210,s:80,l:60},
+    {n:'Mars',   r:100,spd:0.53, sz:2.8, h:10, s:85,l:55},
+    {n:'Jupiter',r:148,spd:0.084,sz:8,   h:40, s:60,l:65},
+    {n:'Saturn', r:192,spd:0.034,sz:7,   h:45, s:55,l:70},
+    {n:'Uranus', r:230,spd:0.012,sz:5,   h:185,s:60,l:65},
+    {n:'Neptune',r:264,spd:0.006,sz:4.5, h:225,s:70,l:55},
   ],
+  starCache: null, reset() { this.starCache = null; },
   draw() {
     const SC = params.sscl;
-    // Sun
-    for (let i = 0; i < 6; i++) dot(0, 0, 0, 12 - i * 1.5, hsl(45, 100, 70, 0.8 - i * 0.12));
-    // Orbits + planets
+    ctx.globalCompositeOperation = 'lighter';
+    if (!this.starCache || this.starCache.length !== Math.floor(params.starN)) {
+      this.starCache = Array.from({length:Math.floor(params.starN)},()=>({x:(Math.random()-0.5)*1400,y:(Math.random()-0.5)*900,b:Math.random()*0.28+0.04}));
+    }
+    this.starCache.forEach(s => { const p=project(s.x,s.y,600); ctx.fillStyle=`rgba(180,205,255,${s.b})`; ctx.beginPath();ctx.arc(p.sx,p.sy,0.9,0,6.2832);ctx.fill(); });
+    screenGlow(0,0,0, 100, 255,220,80, 0.12);
+    glowDot(0,0,0, 9, 48,100,78, 1);
     this.planets.forEach(p => {
-      const r = p.r * SC;
-      // Orbit ring
-      for (let i = 0; i < 60; i++) {
-        const a = (i / 60) * Math.PI * 2;
-        dot(Math.cos(a) * r, 0, Math.sin(a) * r, 0.5, hsl(0, 0, 50, 0.15));
-      }
-      // Planet
-      const pa = t * p.speed * params.sspd * 0.5;
-      dot(Math.cos(pa) * r, 0, Math.sin(pa) * r, p.size, hsl(p.h, 70, 65, 1));
-      // Saturn rings
-      if (p.name === 'Saturn') {
-        for (let i = 0; i < 40; i++) {
-          const ra = (i / 40) * Math.PI * 2;
-          dot(Math.cos(pa) * r + Math.cos(ra) * (p.size + 5), 0, Math.sin(pa) * r + Math.sin(ra) * (p.size + 5) * 0.3, 1, hsl(45, 50, 70, 0.5));
-        }
+      const r=p.r*SC;
+      for (let i=0;i<72;i++){const a=(i/72)*6.2832;dot(Math.cos(a)*r,0,Math.sin(a)*r,0.55,'rgba(255,255,255,0.055)');}
+      const pa=T*p.spd*params.sspd*0.5;
+      const px2=Math.cos(pa)*r, pz=Math.sin(pa)*r;
+      glowDot(px2,0,pz, p.sz, p.h,p.s,p.l, 1);
+      if (p.n==='Saturn'){
+        for (let ri=0;ri<60;ri++){const ra=(ri/60)*6.2832;dot(px2+Math.cos(ra)*(p.sz+6)*SC,0,pz+Math.sin(ra)*(p.sz+6)*SC*0.32,1.2,`hsla(45,50%,70%,0.4)`);}
       }
     });
+    ptCount = params.starN + this.planets.length*80;
+    ctx.globalCompositeOperation = 'source-over';
   }
 });
 
-// ─── Main loop ─────────────────────────────────────────────────────
-let lastTime = 0, fps = 0, fpsAcc = 0, fpsFrames = 0;
+reg('lunar', {
+  name: 'LUNAR ECLIPSE', tag: 'COSM-12',
+  desc: "Earth's shadow umbra sweeps across the lunar surface. Blood moon at full eclipse.",
+  controls: [
+    { id: 'lunR', label: 'Moon Radius',   min: 40,  max: 120, step: 1,    def: 78 },
+    { id: 'lunP', label: 'Eclipse Phase', min: 0,   max: 1,   step: 0.005,def: 0.5 },
+    { id: 'lunN', label: 'Surface Pts',   min: 2000,max: 12000,step:200,  def: 7000 },
+  ],
+  draw() {
+    const R = params.lunR, ph = params.lunP, N = Math.floor(params.lunN);
+    ptCount = N;
+    const shadowX = (ph*2-1)*R*1.35;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < N; i++) {
+      const lat = Math.acos(1-2*Math.random()), lon = Math.random()*6.2832;
+      const x=Math.sin(lat)*Math.cos(lon)*R, y=Math.cos(lat)*R, z=Math.sin(lat)*Math.sin(lon)*R;
+      const dist = Math.sqrt((x-shadowX)**2 + y*y*0.55);
+      const umbra = Math.max(0, 1-dist/(R*0.74));
+      const penumbra = Math.max(0, 1-dist/(R*1.38));
+      if (umbra>0.14) dot(x,y,z,1.4,`hsla(5,90%,${18+umbra*27}%,0.88)`);
+      else if (penumbra>0.05) dot(x,y,z,1.4,`hsla(0,0%,${38+penumbra*32}%,${0.48+penumbra*0.42})`);
+      else dot(x,y,z,1.2,`hsla(0,0%,${72+Math.sin(x*0.3)*Math.cos(y*0.3)*8}%,0.82)`);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    label(R,0,0,'UMBRA EDGE',24,-18);
+    label(-R*0.55,R*0.72,0,'PENUMBRA',24,-14);
+  }
+});
+
+reg('singular', {
+  name: 'SINGULARITY', tag: 'PHYS-13',
+  desc: 'Spacetime geometry collapsing to infinite density. Particle trajectories fail at the core.',
+  controls: [
+    { id: 'sigN', label: 'Particles',      min: 2000, max: 16000, step: 500, def: 10000 },
+    { id: 'sigS', label: 'Collapse Speed', min: 0.1,  max: 3,     step: 0.1, def: 0.85 },
+    { id: 'sigT', label: 'Twist',          min: 0,    max: 5,     step: 0.1, def: 2 },
+  ],
+  draw() {
+    const N = Math.floor(params.sigN);
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < N; i++) {
+      const f = i/N;
+      const coll = Math.pow(Math.abs(Math.sin(f*7+T*params.sigS*0.08)),1.8), r = 205*coll;
+      const theta = f*Math.PI*38+T*params.sigT*(1-coll), phi = f*Math.PI*17;
+      const heat = 1-coll;
+      dot(Math.sin(phi)*Math.cos(theta)*r, Math.cos(phi)*r*0.85, Math.sin(phi)*Math.sin(theta)*r,
+        1+heat*2.2, `hsla(${268+heat*82},90%,${38+heat*42}%,${0.48+heat*0.42})`);
+    }
+    screenGlow(0,0,0, 55, 160,80,255, 0.08);
+    ctx.globalCompositeOperation = 'source-over';
+    label(0,0,0,'SINGULARITY CORE',38,30);
+  }
+});
+
+reg('odyssey', {
+  name: 'THE ODYSSEY', tag: 'ART-15',
+  desc: "Odysseus' ship navigating the wine-dark sea. Particle formation: hull, sail, and ocean surface.",
+  controls: [
+    { id: 'shipSc', label: 'Ship Scale',    min: 8,   max: 40,  step: 1,   def: 22 },
+    { id: 'wave',   label: 'Wave Speed',    min: 0,   max: 5,   step: 0.1, def: 1.5 },
+    { id: 'wind',   label: 'Wind Force',    min: 0,   max: 15,  step: 0.5, def: 8 },
+    { id: 'seaN',   label: 'Sea Particles', min: 500, max: 7000,step: 200, def: 3500 },
+  ],
+  draw() {
+    const SC = params.shipSc, seaN = Math.floor(params.seaN);
+    ptCount = seaN + 2000;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < seaN; i++) {
+      const ix=(Math.random()-0.5)*440, iz=(Math.random()-0.5)*400;
+      if (Math.sqrt(ix*ix+iz*iz)>220) continue;
+      const wv=Math.sin(ix*0.17+T*params.wave)*11+Math.cos(iz*0.12+T*params.wave*0.68)*7;
+      dot(ix,wv-67,iz,1.25,`hsla(216,52%,${23+wv*1.3+Math.random()*4}%,0.52)`);
+    }
+    // hull
+    for (let i = 0; i < 900; i++) {
+      const u=(i/900)*2-1, hx=u*SC, hy=(u*u*0.54-0.28)*SC-33, hw=(1-u*u)*SC*0.52;
+      dot(hx+(Math.random()-0.5)*2, hy+(Math.random()-0.5)*2, hw+(Math.random()-0.5)*2, 2.1,`hsla(37,72%,50%,0.92)`);
+      dot(hx+(Math.random()-0.5)*2, hy+(Math.random()-0.5)*2,-hw+(Math.random()-0.5)*2,2.1,`hsla(37,72%,50%,0.92)`);
+    }
+    for (let y=-46;y<=19;y+=2.5) dot(0,y-23,0,2.3,'hsla(30,38%,32%,0.95)');
+    for (let i=0;i<1400;i++){
+      const su=(Math.random()-0.5)*SC*1.65, sv=Math.random()*64-50;
+      const bow=Math.sin((su/(SC*0.82))*Math.PI)*(6+params.wind)+Math.sin(T*0.38)*3;
+      dot(su*0.44,sv,bow+1,1.2,`hsla(0,0%,${82+Math.random()*12}%,0.52)`);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    label(0,-12,SC*0.72+7,'PROW & RAM',24,-17);
+    label(SC*0.55,-68,0,'WINE-DARK SEA',28,-14);
+  }
+});
+
+reg('fire', {
+  name: 'TURBULENT COMBUSTION FIELD', tag: 'ORG-16',
+  desc: 'Buoyancy-driven turbulent particle fire. Heat color gradient: deep red → orange → yellow tip.',
+  controls: [
+    { id: 'fheat', label: 'Heat',        min: 0.1, max: 3,    step: 0.1, def: 1.5 },
+    { id: 'fN',    label: 'Particles',   min: 500, max: 10000,step: 200, def: 4500 },
+    { id: 'fwid',  label: 'Base Width',  min: 20,  max: 160,  step: 5,   def: 82 },
+  ],
+  pts: [], reset() { this.pts = []; },
+  draw() {
+    const N = Math.floor(params.fN), bw = params.fwid;
+    while (this.pts.length < N) this.pts.push({
+      x:(Math.random()-0.5)*bw, y:-82+Math.random()*22, z:(Math.random()-0.5)*bw*0.48,
+      vx:(Math.random()-0.5)*0.85, vy:-(0.9+Math.random()*2.2)*params.fheat, life:Math.random()
+    });
+    if (this.pts.length > N) this.pts.length = N;
+    ptCount = this.pts.length;
+    ctx.globalCompositeOperation = 'lighter';
+    this.pts.forEach(p => {
+      p.x += p.vx + Math.sin(T*2.6+p.y*0.05)*0.65;
+      p.y += p.vy; p.life -= 0.009+Math.random()*0.006;
+      if (p.life <= 0) { p.x=(Math.random()-0.5)*bw; p.y=-82; p.z=(Math.random()-0.5)*bw*0.48; p.vy=-(0.9+Math.random()*2.2)*params.fheat; p.life=0.7+Math.random()*0.3; }
+      const h2 = p.life, hue = h2>0.72?52:h2>0.46?28:h2>0.24?10:0;
+      dot(p.x,p.y,p.z, 2.3*h2, `hsla(${hue},100%,${13+h2*67}%,${h2*0.82})`);
+      if (h2>0.62&&Math.random()<0.04) dot(p.x,p.y,p.z,6.5,`hsla(55,100%,92%,0.09)`);
+    });
+    screenGlow(0,-88,0, 55, 255,70,10, 0.07*params.fheat);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+});
+
+reg('butterfly', {
+  name: 'BUTTERFLY ATTRACTOR', tag: 'ART-17',
+  desc: 'Peter de Jong strange attractor — deterministic chaos, sensitive to parameter A shift.',
+  controls: [
+    { id: 'bfN', label: 'Iterations', min: 500,  max: 8000, step: 100,  def: 3500 },
+    { id: 'bfa', label: 'Param A',    min: -3,   max: 3,    step: 0.01, def: -2.24 },
+    { id: 'bfb', label: 'Param B',    min: -3,   max: 3,    step: 0.01, def: 0.43 },
+    { id: 'bfc', label: 'Param C',    min: -3,   max: 3,    step: 0.01, def: -2.2 },
+    { id: 'bfd', label: 'Param D',    min: -3,   max: 3,    step: 0.01, def: -0.9 },
+  ],
+  draw() {
+    const N = Math.floor(params.bfN);
+    ptCount = N;
+    const a = params.bfa+Math.sin(T*0.08)*0.04, b = params.bfb, c = params.bfc, d = params.bfd;
+    ctx.globalCompositeOperation = 'lighter';
+    let x = 0.1, y = 0.1;
+    for (let i = 0; i < N; i++) {
+      const nx = Math.sin(a*y)-Math.cos(b*x), ny = Math.sin(c*x)-Math.cos(d*y);
+      x = nx; y = ny;
+      const hue = 262+i/N*115+Math.sin(T+i*0.012)*22;
+      dot(x*92, y*92, Math.sin(i*0.016+T*0.5)*55, 1.9, `hsla(${hue},90%,65%,0.52)`);
+      if (i%45===0) dot(x*92,y*92,Math.sin(i*0.016+T*0.5)*55,5.5,`hsla(${hue},90%,76%,0.09)`);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+});
+
+reg('string', {
+  name: 'STRING THEORY', tag: 'PHYS-18',
+  desc: 'Vibrating 1D strings in compactified extra dimensions. Each vibrational mode = different particle.',
+  controls: [
+    { id: 'stmode', label: 'Vibration Mode', min: 1,  max: 8,   step: 1,   def: 3 },
+    { id: 'stspd',  label: 'Speed',          min: 0.1,max: 5,   step: 0.1, def: 1 },
+    { id: 'stcnt',  label: 'String Count',   min: 5,  max: 42,  step: 1,   def: 18 },
+    { id: 'stPN',   label: 'Pts/String',     min: 80, max: 420, step: 20,  def: 220 },
+  ],
+  draw() {
+    const NS = Math.floor(params.stcnt), M = Math.floor(params.stmode), PN = Math.floor(params.stPN);
+    ptCount = NS*PN;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let s = 0; s < NS; s++) {
+      const off = (s/NS-0.5)*245, hue = 162+s/NS*205;
+      for (let i = 0; i < PN; i++) {
+        const u = i/PN, phase = u*Math.PI*M + T*params.stspd + s*0.62;
+        const amp = 38+Math.sin(s*1.45)*20, bright = 0.28+Math.abs(Math.sin(phase))*0.66;
+        dot(off, (u-0.5)*225, Math.sin(phase)*amp, 1.5, `hsla(${hue},82%,${52+bright*22}%,${bright*0.8})`);
+        if (i%14===0) dot(off,(u-0.5)*225,Math.sin(phase)*amp,4.5,`hsla(${hue},82%,72%,0.07)`);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+});
+
+reg('dna2', {
+  name: 'DNA DOUBLE HELIX', tag: 'BIO-19',
+  desc: 'Watson-Crick B-form double helix. Green: Strand α. Blue: Strand β. Amber bridges: base pairs.',
+  controls: [
+    { id: 'dnaN',  label: 'Base Pairs',  min: 10,  max: 80,  step: 1,   def: 42 },
+    { id: 'dnaS',  label: 'Spin Speed',  min: 0,   max: 5,   step: 0.1, def: 1.2 },
+    { id: 'dnaR',  label: 'Radius',      min: 20,  max: 80,  step: 1,   def: 46 },
+    { id: 'dnaPP', label: 'Density',     min: 8,   max: 42,  step: 2,   def: 22 },
+  ],
+  draw() {
+    const N = Math.floor(params.dnaN), R = params.dnaR, PP = Math.floor(params.dnaPP);
+    ptCount = N*PP*2;
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < N; i++) {
+      const f=i/N, a=f*Math.PI*10+T*params.dnaS, y=(f-0.5)*248;
+      const x1=Math.cos(a)*R, z1=Math.sin(a)*R, x2=Math.cos(a+Math.PI)*R, z2=Math.sin(a+Math.PI)*R;
+      for (let j=0;j<PP;j++) {
+        dot(x1+(Math.random()-0.5)*1.6,y+(Math.random()-0.5)*2.2,z1+(Math.random()-0.5)*1.6,1.9,`hsla(162,100%,56%,0.82)`);
+        dot(x2+(Math.random()-0.5)*1.6,y+(Math.random()-0.5)*2.2,z2+(Math.random()-0.5)*1.6,1.9,`hsla(216,100%,60%,0.82)`);
+      }
+      if (i%3===0) {
+        for (let j=0;j<=11;j++){const bf=j/11;dot(x1+(x2-x1)*bf,y+(Math.random()-0.5),z1+(z2-z1)*bf,1.6,`hsla(44,90%,64%,0.48)`);}
+        dot(x1,y,z1,5.5,`hsla(162,100%,70%,0.11)`);
+        dot(x2,y,z2,5.5,`hsla(216,100%,70%,0.11)`);
+      }
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    label(R,60,0,'STRAND α',24,-18);
+    label(-R,-60,0,'STRAND β',24,14);
+    label(0,0,0,'BASE PAIR',32,-18);
+  }
+});
+
+reg('atom', {
+  name: 'ELECTRON ORBITAL SHELLS', tag: 'PHYS-20',
+  desc: 'Multi-shell electron probability clouds orbiting a dense nucleus. Bright dots: active electrons.',
+  controls: [
+    { id: 'shells', label: 'Shell Count',    min: 1,   max: 6,    step: 1,   def: 4 },
+    { id: 'aspd',   label: 'Orbital Speed',  min: 0.1, max: 5,    step: 0.1, def: 1.5 },
+    { id: 'atN',    label: 'Cloud Density',  min: 100, max: 2200, step: 50,  def: 700 },
+  ],
+  draw() {
+    const SH = Math.floor(params.shells), PN = Math.floor(params.atN);
+    ptCount = SH*PN + 10;
+    ctx.globalCompositeOperation = 'lighter';
+    screenGlow(0,0,0, 40, 255,200,60, 0.1);
+    glowDot(0,0,0, 7, 48,100,78, 1);
+    for (let i=0;i<10;i++) dot((Math.random()-0.5)*7,(Math.random()-0.5)*7,(Math.random()-0.5)*7,3.5,`hsla(0,80%,62%,0.7)`);
+    for (let s = 1; s <= SH; s++) {
+      const r=s*60, tilt=s*0.38, spd=params.aspd/s, hue=198+s*30;
+      for (let i=0;i<PN;i++){
+        const a=(i/PN)*6.2832+T*spd+Math.random()*0.022, spread=(Math.random()-0.5)*9;
+        dot(Math.cos(a)*(r+spread), Math.sin(a+tilt)*(r+spread)*0.3+spread*0.5, Math.sin(a)*(r+spread),
+          1.4, `hsla(${hue},90%,${53+s*5}%,${(0.28+Math.random()*0.5)*0.7})`);
+      }
+      const ea=T*spd*2, ex=Math.cos(ea)*r, ey=Math.sin(ea+tilt)*r*0.3, ez=Math.sin(ea)*r;
+      glowDot(ex,ey,ez, 4, hue,100,78, 1);
+      if (s===1) label(ex,ey,ez,'ELECTRON',26,-18);
+    }
+    ctx.globalCompositeOperation = 'source-over';
+    label(0,0,0,'NUCLEUS',28,25);
+  }
+});
+
+reg('physics', {
+  name: 'N-BODY GRAVITY FIELD', tag: 'PHYS-04',
+  desc: 'Particles orbiting a central gravity well — shell stratification by orbital energy.',
+  controls: [
+    { id: 'phN', label: 'Particles',   min: 500,  max: 10000, step: 200, def: 4000 },
+    { id: 'phG', label: 'Gravity',     min: 0.1,  max: 3,     step: 0.05,def: 1 },
+    { id: 'phR', label: 'Max Radius',  min: 80,   max: 360,   step: 5,   def: 230 },
+  ],
+  pts: null, reset() { this.pts = null; },
+  draw() {
+    const N = Math.floor(params.phN);
+    if (!this.pts || this.pts.length !== N) {
+      this.pts = Array.from({length:N}, () => {
+        const r = 50+Math.random()*params.phR, a=Math.random()*6.2832, b=(Math.random()-0.5)*0.52;
+        return { r,a,b, spd:0.24+Math.random()*0.62, col:Math.random(), h:Math.random() };
+      });
+    }
+    ptCount = N;
+    ctx.globalCompositeOperation = 'lighter';
+    this.pts.forEach(p => {
+      p.a += (p.spd/Math.max(p.r,10))*params.phG*23;
+      dot(Math.cos(p.a)*p.r*Math.cos(p.b), p.r*Math.sin(p.b), Math.sin(p.a)*p.r*Math.cos(p.b),
+        1.55, `hsla(${192+p.col*165},82%,${44+p.h*32}%,0.75)`);
+    });
+    screenGlow(0,0,0, 55, 80,255,180, 0.08);
+    glowDot(0,0,0, 5, 162,100,75, 1);
+    ctx.globalCompositeOperation = 'source-over';
+    label(0,0,0,'GRAVITY WELL',34,30);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// CLOCK + RENDER LOOP
+// ═══════════════════════════════════════════════════════════════
+function updateClock() {
+  const now = new Date();
+  document.getElementById('sys-time').textContent =
+    `SYS // ${now.toUTCString().slice(17,25)} UTC`;
+}
+updateClock(); setInterval(updateClock, 1000);
+
+let lastTime = 0, fpsAcc = 0, fpsFrames = 0, fpsD = 0;
 
 function loop(now) {
-  const dt = (now - lastTime) / 1000;
+  const dt = Math.min((now - lastTime)/1000, 0.05);
   lastTime = now;
   fpsAcc += dt; fpsFrames++;
-  if (fpsAcc >= 0.5) { fps = Math.round(fpsFrames / fpsAcc); fpsAcc = 0; fpsFrames = 0; document.getElementById('fps').textContent = fps + ' fps'; }
-
-  const w = canvas.width, h = canvas.height;
-  ctx.fillStyle = 'rgba(5,6,8,0.18)';
-  ctx.fillRect(0, 0, w, h);
-
-  if (current) {
-    t += 0.016;
-    current.draw();
+  if (fpsAcc >= 0.6) {
+    fpsD = Math.round(fpsFrames/fpsAcc);
+    fpsAcc = 0; fpsFrames = 0;
+    document.getElementById('fps-val').textContent = fpsD;
+    document.getElementById('pt-val').textContent = ptCount.toLocaleString();
   }
+
+  // Fade trail
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.fillStyle = 'rgba(2,4,6,0.2)';
+  ctx.fillRect(0, 0, W, H);
+
+  if (current) { T += 0.016; current.draw(); }
 
   requestAnimationFrame(loop);
 }
 
-// ─── AI btn placeholder ────────────────────────────────────────────
+// AI stub
 document.getElementById('ai-btn').addEventListener('click', () => {
-  const val = document.getElementById('ai-input').value.trim();
-  if (!val) return;
-  document.getElementById('ai-btn').textContent = '⟳ Coming Soon...';
-  setTimeout(() => document.getElementById('ai-btn').textContent = '⚡ Generate Shape', 1500);
+  const btn = document.getElementById('ai-btn');
+  btn.textContent = '⟳ MODULE OFFLINE';
+  btn.style.borderColor = 'rgba(255,60,60,0.4)';
+  btn.style.color = 'var(--danger)';
+  setTimeout(() => {
+    btn.textContent = '⚡ GENERATE FIELD';
+    btn.style.borderColor = 'rgba(0,255,157,0.3)';
+    btn.style.color = 'var(--accent2)';
+  }, 2000);
 });
 
-// ─── Boot ──────────────────────────────────────────────────────────
-requestAnimationFrame(loop);
-// Auto-select first
-switchSim('vortex');
+// Boot loader
+const bar = document.getElementById('loader-bar');
+const loaderTxt = document.getElementById('loader-txt');
+const msgs = ['INITIALIZING PARTICLE ENGINE...','CALIBRATING FIELD RENDERER...','LOADING SIMULATION LIBRARY...','MOUNTING SUBSYSTEMS...','ONLINE'];
+let prog = 0, msgIdx = 0;
+const boot = setInterval(() => {
+  prog += 2 + Math.random()*3;
+  if (prog > 100) prog = 100;
+  bar.style.width = prog + '%';
+  if (msgIdx < msgs.length - 1 && prog > (msgIdx+1)*20) { msgIdx++; loaderTxt.textContent = msgs[msgIdx]; }
+  if (prog >= 100) {
+    clearInterval(boot);
+    setTimeout(() => {
+      const loader = document.getElementById('loader');
+      loader.style.opacity = '0';
+      setTimeout(() => { loader.style.display = 'none'; switchSim('vortex'); requestAnimationFrame(loop); }, 600);
+    }, 300);
+  }
+}, 40);
 </script>
 </body>
 </html>
